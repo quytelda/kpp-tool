@@ -1,0 +1,67 @@
+cabal-version: 2.2
+
+-- This file has been generated from package.yaml by hpack version 0.36.0.
+--
+-- see: https://github.com/sol/hpack
+
+name:           kpp-tool
+version:        0.1.0.0
+description:    Please see the README on GitHub at <https://github.com/quytelda/kpp-tool#readme>
+homepage:       https://github.com/quytelda/kpp-tool#readme
+bug-reports:    https://github.com/quytelda/kpp-tool/issues
+author:         Quytelda Kahja
+maintainer:     quytelda@tamalin.org
+copyright:      Copyright 2023 Quytelda Kahja
+license:        BSD-3-Clause
+license-file:   LICENSE
+build-type:     Simple
+extra-source-files:
+    README.md
+    CHANGELOG.md
+
+source-repository head
+  type: git
+  location: https://github.com/quytelda/kpp-tool
+
+library
+  exposed-modules:
+      Lib
+  other-modules:
+      Paths_kpp_tool
+  autogen-modules:
+      Paths_kpp_tool
+  hs-source-dirs:
+      src
+  ghc-options: -Wall -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wmissing-export-lists -Wmissing-home-modules -Wpartial-fields -Wredundant-constraints
+  build-depends:
+      base >=4.7 && <5
+  default-language: Haskell2010
+
+executable kpp-tool-exe
+  main-is: Main.hs
+  other-modules:
+      Paths_kpp_tool
+  autogen-modules:
+      Paths_kpp_tool
+  hs-source-dirs:
+      app
+  ghc-options: -Wall -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wmissing-export-lists -Wmissing-home-modules -Wpartial-fields -Wredundant-constraints -threaded -rtsopts -with-rtsopts=-N
+  build-depends:
+      base >=4.7 && <5
+    , kpp-tool
+  default-language: Haskell2010
+
+test-suite kpp-tool-test
+  type: exitcode-stdio-1.0
+  main-is: Spec.hs
+  other-modules:
+      Paths_kpp_tool
+  autogen-modules:
+      Paths_kpp_tool
+  hs-source-dirs:
+      test
+  ghc-options: -Wall -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wmissing-export-lists -Wmissing-home-modules -Wpartial-fields -Wredundant-constraints -threaded -rtsopts -with-rtsopts=-N
+  build-depends:
+      base >=4.7 && <5
+    , kpp-tool
+  default-language: Haskell2010

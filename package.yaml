@@ -21,6 +21,8 @@ description:         Please see the README on GitHub at <https://github.com/quyt
 
 dependencies:
 - base >= 4.7 && < 5
+- text >= 2.0 && < 3
+- bytestring >= 0.11
 
 ghc-options:
 - -Wall

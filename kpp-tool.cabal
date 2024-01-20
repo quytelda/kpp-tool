@@ -37,6 +37,7 @@ library
       JuicyPixels >=3.3 && <4
     , base >=4.7 && <5
     , bytestring >=0.11
+    , containers >=0.6
     , text >=2.0 && <3
   default-language: Haskell2010
 
@@ -53,6 +54,7 @@ executable kpp-tool-exe
       JuicyPixels >=3.3 && <4
     , base >=4.7 && <5
     , bytestring >=0.11
+    , containers >=0.6
     , kpp-tool
     , text >=2.0 && <3
   default-language: Haskell2010
@@ -71,6 +73,7 @@ test-suite kpp-tool-test
       JuicyPixels >=3.3 && <4
     , base >=4.7 && <5
     , bytestring >=0.11
+    , containers >=0.6
     , kpp-tool
     , text >=2.0 && <3
   default-language: Haskell2010

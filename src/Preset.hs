@@ -3,6 +3,7 @@
 module Preset
   ( Param
   , Preset(..)
+  , Resource(..)
   , decodeKPP
   , encodeKPP
   , getSettings
@@ -12,8 +13,29 @@ module Preset
 import           Codec.Picture
 import           Codec.Picture.Metadata
 import           Data.ByteString        (ByteString)
+import qualified Data.ByteString        as BS
 import           Data.Map.Strict        (Map)
 import           Data.Text              (Text)
+
+-- | Resource is a type for embedded resources.
+data Resource = Resource { resourceName :: !Text
+                         , resourceFile :: !Text
+                         , resourceType :: !Text
+                         , resourceCsum :: !Text
+                         , resourceData :: !ByteString
+                         }
+
+-- | Resource records often contain really long binary strings, so we
+-- provide a custom abbreviated instance for Show.
+instance Show Resource where
+  show Resource{..} =
+    unwords [ "Resource"
+            , show resourceName
+            , show resourceFile
+            , show resourceType
+            , show resourceCsum
+            , show (BS.length resourceData) ++ "b"
+            ]
 
 -- | A Param represents the value of a preset parameter.
 --

@@ -1,6 +1,6 @@
 module Main (main) where
 
-import Preset
+import Preset ()
 
 main :: IO ()
 main = undefined

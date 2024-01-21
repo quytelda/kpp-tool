@@ -1,6 +1,13 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards   #-}
-module Preset where
+module Preset
+  ( Param
+  , Preset(..)
+  , decodeKPP
+  , encodeKPP
+  , getSettings
+  , parseSettings
+  ) where
 
 import           Codec.Picture
 import           Codec.Picture.Metadata
@@ -25,14 +32,14 @@ data Preset = Preset { presetName    :: !Text
 
 -- | Decode binary KPP file data (PNG data) into a Preset.
 decodeKPP :: ByteString -> Either String Preset
-decodeKPP bytes = undefined
+decodeKPP = undefined
   -- 1. Decode PNG data
   -- 2. Lookup settings XML in metadata
   -- 3. Parse settings XML
 
 -- | Encode a Preset as binary PNG data.
 encodeKPP :: Preset -> Either String ByteString
-encodeKPP preset = undefined
+encodeKPP = undefined
   -- 1. Render settings XML
   -- 2. Insert settings into metadata
   -- 3. Encode PNG data

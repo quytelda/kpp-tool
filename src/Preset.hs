@@ -46,10 +46,11 @@ data Param = String !Text
            deriving (Show)
 
 -- | Preset represents a Krita brush preset.
-data Preset = Preset { presetName    :: !Text
-                     , presetPaintop :: !Text
-                     , presetParams  :: Map Text Param
-                     , presetIcon    :: (DynamicImage, Metadatas)
+data Preset = Preset { presetName        :: !Text
+                     , presetPaintop     :: !Text
+                     , presetParams      :: Map Text Param
+                     , embeddedResources :: [Resource]
+                     , presetIcon        :: (DynamicImage, Metadatas)
                      }
 
 -- | Decode binary KPP file data (PNG data) into a Preset.

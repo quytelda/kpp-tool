@@ -1,3 +1,32 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards   #-}
 module Preset where
+
+import           Codec.Picture
+import           Codec.Picture.Metadata
+import           Data.ByteString        (ByteString)
+import           Data.Text              (Text)
+
+data Preset = Preset
+
+-- | Decode binary KPP file data (PNG data) into a Preset.
+decodeKPP :: ByteString -> Either String Preset
+decodeKPP bytes = undefined
+  -- 1. Decode PNG data
+  -- 2. Lookup settings XML in metadata
+  -- 3. Parse settings XML
+
+-- | Encode a Preset as binary PNG data.
+encodeKPP :: Preset -> Either String ByteString
+encodeKPP preset = undefined
+  -- 1. Render settings XML
+  -- 2. Insert settings into metadata
+  -- 3. Encode PNG data
+
+-- | Locate the preset settings from the PNG metadata table.
+getSettings :: Metadatas -> Text
+getSettings = undefined
+
+-- | Parse preset settings XML.
+parseSettings :: Text -> DynamicImage -> Metadatas -> Preset
+parseSettings = undefined

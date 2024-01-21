@@ -5,9 +5,23 @@ module Preset where
 import           Codec.Picture
 import           Codec.Picture.Metadata
 import           Data.ByteString        (ByteString)
+import           Data.Map.Strict        (Map)
 import           Data.Text              (Text)
 
-data Preset = Preset
+-- | A Param represents the value of a preset parameter.
+--
+-- This value has a type, which can be "string" (for textual data) or
+-- "bytearray" (for binary data, encoded in base64).
+data Param = String !Text
+           | Binary !ByteString
+           deriving (Show)
+
+-- | Preset represents a Krita brush preset.
+data Preset = Preset { presetName    :: !Text
+                     , presetPaintop :: !Text
+                     , presetParams  :: Map Text Param
+                     , presetIcon    :: (DynamicImage, Metadatas)
+                     }
 
 -- | Decode binary KPP file data (PNG data) into a Preset.
 decodeKPP :: ByteString -> Either String Preset

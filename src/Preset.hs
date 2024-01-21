@@ -53,6 +53,21 @@ data Preset = Preset { presetName        :: !Text
                      , presetIcon        :: (DynamicImage, Metadatas)
                      }
 
+-- | Preset records contain image data, so we provide a custom
+-- instance for Show that describes images in terms of dimensions.
+instance Show Preset where
+  show Preset{..} =
+    unwords [ "Preset"
+            , show presetName
+            , show presetPaintop
+            , show presetParams
+            , show embeddedResources
+            , "[" ++ show iconWidth ++ "x" ++ show iconHeight ++ "]"
+            ]
+    where
+      iconWidth  = dynamicMap imageWidth  (fst presetIcon)
+      iconHeight = dynamicMap imageHeight (fst presetIcon)
+
 -- | Decode binary KPP file data (PNG data) into a Preset.
 decodeKPP :: ByteString -> Either String Preset
 decodeKPP = undefined

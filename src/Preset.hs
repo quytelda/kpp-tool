@@ -11,11 +11,12 @@ module Preset
   ) where
 
 import           Codec.Picture
-import           Codec.Picture.Metadata
+import           Codec.Picture.Metadata as Meta
 import           Data.ByteString        (ByteString)
 import qualified Data.ByteString        as BS
 import           Data.Map.Strict        (Map)
 import           Data.Text              (Text)
+import qualified Data.Text.Lazy         as TL
 
 -- | Resource is a type for embedded resources.
 data Resource = Resource { resourceName :: !Text
@@ -83,8 +84,11 @@ encodeKPP = undefined
   -- 3. Encode PNG data
 
 -- | Locate the preset settings from the PNG metadata table.
-getSettings :: Metadatas -> Text
-getSettings = undefined
+getSettings :: Metadatas -> Either String TL.Text
+getSettings meta =
+  case Meta.lookup (Unknown "preset") meta of
+    Just (Meta.String s) -> Right (TL.pack s)
+    _                    -> Left "Missing or invalid preset metadata"
 
 -- | Parse preset settings XML.
 parseSettings :: Text -> DynamicImage -> Metadatas -> Preset

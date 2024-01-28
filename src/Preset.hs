@@ -11,7 +11,7 @@ module Preset
   ) where
 
 import           Codec.Picture
-import           Codec.Picture.Metadata as Meta
+import qualified Codec.Picture.Metadata as Meta
 import           Data.ByteString        (ByteString)
 import qualified Data.ByteString        as BS
 import           Data.Map.Strict        (Map)
@@ -51,7 +51,7 @@ data Preset = Preset { presetName        :: !Text
                      , presetPaintop     :: !Text
                      , presetParams      :: Map Text Param
                      , embeddedResources :: [Resource]
-                     , presetIcon        :: (DynamicImage, Metadatas)
+                     , presetIcon        :: (DynamicImage, Meta.Metadatas)
                      }
 
 -- | Preset records contain image data, so we provide a custom
@@ -83,13 +83,16 @@ encodeKPP = undefined
   -- 2. Insert settings into metadata
   -- 3. Encode PNG data
 
+presetSettingsKey :: Meta.Keys Meta.Value
+presetSettingsKey = Meta.Unknown "preset"
+
 -- | Locate the preset settings from the PNG metadata table.
-getSettings :: Metadatas -> Either String TL.Text
+getSettings :: Meta.Metadatas -> Either String TL.Text
 getSettings meta =
-  case Meta.lookup (Unknown "preset") meta of
+  case Meta.lookup presetSettingsKey meta of
     Just (Meta.String s) -> Right (TL.pack s)
     _                    -> Left "Missing or invalid preset metadata"
 
 -- | Parse preset settings XML.
-parseSettings :: Text -> DynamicImage -> Metadatas -> Preset
+parseSettings :: Text -> DynamicImage -> Meta.Metadatas -> Preset
 parseSettings = undefined

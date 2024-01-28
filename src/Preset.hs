@@ -7,6 +7,7 @@ module Preset
   , decodeKPP
   , encodeKPP
   , getSettings
+  , setSettings
   , parseSettings
   ) where
 
@@ -92,6 +93,11 @@ getSettings meta =
   case Meta.lookup presetSettingsKey meta of
     Just (Meta.String s) -> Right (TL.pack s)
     _                    -> Left "Missing or invalid preset metadata"
+
+-- | Insert preset settings XML into a PNG metadata table.
+setSettings :: Meta.Metadatas -> TL.Text -> Meta.Metadatas
+setSettings meta xml = Meta.insert presetSettingsKey value meta
+  where value = Meta.String $ TL.unpack xml
 
 -- | Parse preset settings XML.
 parseSettings :: Text -> DynamicImage -> Meta.Metadatas -> Preset

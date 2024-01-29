@@ -52,6 +52,9 @@ executables:
     - -with-rtsopts=-N
     dependencies:
     - kpp-tool
+    when:
+    - condition: false
+      other-modules: Paths_kpp_tool
 
 tests:
   kpp-tool-test:

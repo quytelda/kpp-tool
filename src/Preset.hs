@@ -13,13 +13,17 @@ module Preset
 
 import           Codec.Picture
 import qualified Codec.Picture.Metadata as Meta
+import           Control.Monad
 import           Data.ByteString        (ByteString)
 import qualified Data.ByteString        as BS
 import           Data.ByteString.Base64 (decodeBase64)
 import           Data.Map.Strict        (Map)
+import qualified Data.Map.Strict        as Map
 import           Data.Text              (Text)
 import           Data.Text.Encoding     (encodeUtf8)
 import qualified Data.Text.Lazy         as TL
+import           Data.Text.Read         (decimal)
+import           Text.XML.Cursor
 
 eitherToList :: Either a b -> [b]
 eitherToList = either (const mempty) pure
@@ -27,6 +31,10 @@ eitherToList = either (const mempty) pure
 -- | Decode binary data encoded in base64 text.
 decodeBinary :: Text -> [ByteString]
 decodeBinary = eitherToList . decodeBase64 . encodeUtf8
+
+-- | Decode an integer from a textual representation.
+decodeInt :: Text -> [Int]
+decodeInt = fmap fst . eitherToList . decimal
 
 -- | Resource is a type for embedded resources.
 data Resource = Resource { resourceName :: !Text
@@ -48,6 +56,19 @@ instance Show Resource where
             , show (BS.length resourceData) ++ "b"
             ]
 
+-- | Select resource elements and parse them into Resource structures.
+--
+-- Any content is appropriately decoded from base64 into byte data.
+resources :: Cursor -> [Resource]
+resources cursor = do
+  resourceName <- attribute "name" cursor
+  resourceType <- attribute "type" cursor
+  resourceFile <- attribute "filename" cursor
+  resourceCsum <- attribute "md5sum" cursor
+  resourceData <- descendant cursor >>= content >>= decodeBinary
+
+  return $ Resource{..}
+
 -- | A Param represents the value of a preset parameter.
 --
 -- This value has a type, which can be "string" (for textual data) or
@@ -55,6 +76,20 @@ instance Show Resource where
 data Param = String !Text
            | Binary !ByteString
            deriving (Show)
+
+-- | Select parameter elements and parse them into Param tables.
+params :: Cursor -> [(Text, Param)]
+params cursor = do
+  paramName <- attribute "name" cursor
+  paramType <- attribute "type" cursor
+  paramData <- descendant cursor >>= content
+
+  paramValue <- case paramType of
+    "string"    -> String <$> return paramData
+    "bytearray" -> Binary <$> decodeBinary paramData
+    _           -> mempty
+
+  return (paramName, paramValue)
 
 -- | Preset represents a Krita brush preset.
 data Preset = Preset { presetName        :: !Text
@@ -78,6 +113,25 @@ instance Show Preset where
     where
       iconWidth  = dynamicMap imageWidth  (fst presetIcon)
       iconHeight = dynamicMap imageHeight (fst presetIcon)
+
+-- | Select and parse Preset elements in an XML document.
+--
+-- A DynamicImage and associated Metadatas records are required to fully
+-- construct a Preset record, so must be passed in.
+presets :: Cursor -> DynamicImage -> Meta.Metadatas -> [Preset]
+presets cursor icon meta = do
+  presetName    <- attribute "name" cursor
+  presetPaintop <- attribute "paintopid" cursor
+  resourceCount <- attribute "embedded_resources" cursor >>= decodeInt
+
+  let presetParams      = Map.fromList $ cursor $/ params
+      embeddedResources = cursor $/ element "resources" &/ resources
+      presetIcon        = (icon, meta)
+
+  -- Sanity check: were the expected number of resources loaded?
+  guard (length embeddedResources == resourceCount)
+
+  return $ Preset{..}
 
 -- | Decode binary KPP file data (PNG data) into a Preset.
 decodeKPP :: ByteString -> Either String Preset

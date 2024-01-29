@@ -15,9 +15,18 @@ import           Codec.Picture
 import qualified Codec.Picture.Metadata as Meta
 import           Data.ByteString        (ByteString)
 import qualified Data.ByteString        as BS
+import           Data.ByteString.Base64 (decodeBase64)
 import           Data.Map.Strict        (Map)
 import           Data.Text              (Text)
+import           Data.Text.Encoding     (encodeUtf8)
 import qualified Data.Text.Lazy         as TL
+
+eitherToList :: Either a b -> [b]
+eitherToList = either (const mempty) pure
+
+-- | Decode binary data encoded in base64 text.
+decodeBinary :: Text -> [ByteString]
+decodeBinary = eitherToList . decodeBase64 . encodeUtf8
 
 -- | Resource is a type for embedded resources.
 data Resource = Resource { resourceName :: !Text

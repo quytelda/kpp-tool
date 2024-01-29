@@ -22,6 +22,7 @@ description:         Please see the README on GitHub at <https://github.com/quyt
 dependencies:
 - base >= 4.7 && < 5
 - text >= 2.0 && < 3
+- base64 >= 0.4.2 && < 2.0
 - bytestring >= 0.11
 - containers >= 0.6
 - JuicyPixels >= 3.3 && < 4

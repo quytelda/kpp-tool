@@ -15,6 +15,7 @@ import           Codec.Picture
 import qualified Codec.Picture.Metadata as Meta
 import           Control.Monad
 import           Control.Applicative
+import           Data.Bifunctor         (first)
 import           Data.ByteString        (ByteString)
 import qualified Data.ByteString        as BS
 import           Data.ByteString.Base64 (decodeBase64)
@@ -24,6 +25,7 @@ import           Data.Text              (Text)
 import           Data.Text.Encoding     (encodeUtf8)
 import qualified Data.Text.Lazy         as TL
 import           Data.Text.Read         (decimal)
+import           Text.XML
 import           Text.XML.Cursor
 
 -- | Decode binary data encoded in base64 text.
@@ -167,5 +169,13 @@ setSettings meta xml = Meta.insert presetSettingsKey value meta
   where value = Meta.String $ TL.unpack xml
 
 -- | Parse preset settings XML.
-parseSettings :: Text -> DynamicImage -> Meta.Metadatas -> Preset
-parseSettings = undefined
+--
+-- The XML document should contain the settings for exactly one
+-- preset.
+parseSettings :: TL.Text -> DynamicImage -> Meta.Metadatas -> Either String Preset
+parseSettings xml icon meta = do
+  doc <- first show $ parseText def xml
+  case presets (fromDocument doc) icon meta of
+    []       -> Left "invalid preset XML"
+    [preset] -> Right preset
+    _        -> Left "multiple presets found"

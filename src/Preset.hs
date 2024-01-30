@@ -14,6 +14,7 @@ module Preset
 import           Codec.Picture
 import qualified Codec.Picture.Metadata as Meta
 import           Control.Monad
+import           Control.Applicative
 import           Data.ByteString        (ByteString)
 import qualified Data.ByteString        as BS
 import           Data.ByteString.Base64 (decodeBase64)
@@ -25,16 +26,19 @@ import qualified Data.Text.Lazy         as TL
 import           Data.Text.Read         (decimal)
 import           Text.XML.Cursor
 
-eitherToList :: Either a b -> [b]
-eitherToList = either (const mempty) pure
-
 -- | Decode binary data encoded in base64 text.
-decodeBinary :: Text -> [ByteString]
-decodeBinary = eitherToList . decodeBase64 . encodeUtf8
+decodeBinary :: Alternative f => Text -> f ByteString
+decodeBinary text = case decodeBase64 $ encodeUtf8 $ text of
+  Right bytes -> pure bytes
+  _           -> empty
 
--- | Decode an integer from a textual representation.
-decodeInt :: Text -> [Int]
-decodeInt = fmap fst . eitherToList . decimal
+-- | Parse an Int from a Text representation.
+--
+-- The integer must contain only the digits 0-9 with no spaces.
+parseInt :: Alternative f => Text -> f Int
+parseInt text = case decimal text of
+  Right (n, "") -> pure n
+  _             -> empty
 
 -- | Resource is a type for embedded resources.
 data Resource = Resource { resourceName :: !Text
@@ -122,7 +126,7 @@ presets :: Cursor -> DynamicImage -> Meta.Metadatas -> [Preset]
 presets cursor icon meta = do
   presetName    <- attribute "name" cursor
   presetPaintop <- attribute "paintopid" cursor
-  resourceCount <- attribute "embedded_resources" cursor >>= decodeInt
+  resourceCount <- attribute "embedded_resources" cursor >>= parseInt
 
   let presetParams      = Map.fromList $ cursor $/ params
       embeddedResources = cursor $/ element "resources" &/ resources

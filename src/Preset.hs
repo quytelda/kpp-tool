@@ -1,7 +1,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards   #-}
 module Preset
-  ( Param
+  ( Param(..)
   , Preset(..)
   , Resource(..)
   , decodeKPP
@@ -60,7 +60,7 @@ instance Show Resource where
             , show resourceFile
             , show resourceType
             , show resourceCsum
-            , show (BS.length resourceData) ++ "b"
+            , showBinary resourceData
             ]
 
 -- | Select resource elements and parse them into Resource structures.
@@ -82,7 +82,26 @@ resources cursor = do
 -- "bytearray" (for binary data, encoded in base64).
 data Param = String !Text
            | Binary !ByteString
-           deriving (Show)
+
+showBinary :: ByteString -> String
+showBinary bytes
+  | size <= maxlen = show bytes
+  | otherwise      = show preview
+                     <> "... (+"
+                     <> show (size - maxlen)
+                     <> " bytes)"
+    where
+      size    = BS.length bytes
+      maxlen  = 16
+      preview = BS.take maxlen bytes
+
+
+-- | Binary parameters are often quite long, so this custom Show
+-- instance truncates the displayed ByteString if the input is too
+-- long.
+instance Show Param where
+  show (String text)  = "String " <> show text
+  show (Binary bytes) = "Binary " <> showBinary bytes
 
 -- | Select parameter elements and parse them into Param tables.
 params :: Cursor -> [(Text, Param)]

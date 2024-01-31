@@ -13,6 +13,7 @@ module Preset
 
 import           Codec.Picture
 import qualified Codec.Picture.Metadata as Meta
+import           Codec.Picture.Png      (decodePngWithMetadata)
 import           Control.Monad
 import           Control.Applicative
 import           Data.Bifunctor         (first)
@@ -141,10 +142,15 @@ presets cursor icon meta = do
 
 -- | Decode binary KPP file data (PNG data) into a Preset.
 decodeKPP :: ByteString -> Either String Preset
-decodeKPP = undefined
+decodeKPP bytes = do
   -- 1. Decode PNG data
+  (icon, meta) <- decodePngWithMetadata bytes
+
   -- 2. Lookup settings XML in metadata
+  xml <- getSettings meta
+
   -- 3. Parse settings XML
+  parseSettings xml icon meta
 
 -- | Encode a Preset as binary PNG data.
 encodeKPP :: Preset -> Either String ByteString

@@ -14,8 +14,8 @@ module Preset
 import           Codec.Picture
 import qualified Codec.Picture.Metadata as Meta
 import           Codec.Picture.Png      (decodePngWithMetadata)
-import           Control.Monad
 import           Control.Applicative
+import           Control.Monad
 import           Data.Bifunctor         (first)
 import           Data.ByteString        (ByteString)
 import qualified Data.ByteString        as BS
@@ -83,6 +83,8 @@ resources cursor = do
 data Param = String !Text
            | Binary !ByteString
 
+-- | Convert a ByteString to a short String for display purposes. Long
+-- ByteStrings are truncated.
 showBinary :: ByteString -> String
 showBinary bytes
   | size <= maxlen = show bytes
@@ -94,7 +96,6 @@ showBinary bytes
       size    = BS.length bytes
       maxlen  = 16
       preview = BS.take maxlen bytes
-
 
 -- | Binary parameters are often quite long, so this custom Show
 -- instance truncates the displayed ByteString if the input is too
@@ -178,6 +179,8 @@ encodeKPP = undefined
   -- 2. Insert settings into metadata
   -- 3. Encode PNG data
 
+-- | This is the metadata key for looking up the preset settings XML
+-- in the PNG metadata.
 presetSettingsKey :: Meta.Keys Meta.Value
 presetSettingsKey = Meta.Unknown "preset"
 

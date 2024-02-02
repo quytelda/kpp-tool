@@ -24,6 +24,7 @@ import           Data.Foldable          (toList)
 import           Data.Map.Strict        (Map)
 import qualified Data.Map.Strict        as Map
 import           Data.Text              (Text)
+import qualified Data.Text              as T
 import           Data.Text.Encoding     (encodeUtf8)
 import qualified Data.Text.Lazy         as TL
 import           Data.Text.Read         (decimal)
@@ -182,6 +183,16 @@ encodeKPP = undefined
 -- in the PNG metadata.
 presetSettingsKey :: Meta.Keys Meta.Value
 presetSettingsKey = Meta.Unknown "preset"
+
+-- | This is the version key for looking up the preset version.
+presetVersionKey :: Meta.Keys Meta.Value
+presetVersionKey = Meta.Unknown "version"
+
+getVersion :: Meta.Metadatas -> Either String T.Text
+getVersion meta =
+  case Meta.lookup presetVersionKey meta of
+    Just (Meta.String s) -> Right (T.pack s)
+    _                    -> Left "missing or invalid preset version"
 
 -- | Locate the preset settings from the PNG metadata table.
 getSettings :: Meta.Metadatas -> Either String TL.Text

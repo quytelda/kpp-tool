@@ -20,6 +20,7 @@ import           Data.Bifunctor         (first)
 import           Data.ByteString        (ByteString)
 import qualified Data.ByteString        as BS
 import           Data.ByteString.Base64 (decodeBase64)
+import           Data.Foldable          (toList)
 import           Data.Map.Strict        (Map)
 import qualified Data.Map.Strict        as Map
 import           Data.Text              (Text)
@@ -30,10 +31,8 @@ import           Text.XML
 import           Text.XML.Cursor
 
 -- | Decode binary data encoded in base64 text.
-decodeBinary :: Alternative f => Text -> f ByteString
-decodeBinary text = case decodeBase64 $ encodeUtf8 $ text of
-  Right bytes -> pure bytes
-  _           -> empty
+decodeBinary :: Text -> [ByteString]
+decodeBinary = toList . decodeBase64 . encodeUtf8
 
 -- | Parse an Int from a Text representation.
 --

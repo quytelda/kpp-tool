@@ -8,7 +8,6 @@ module Preset
   , encodeKPP
   , getSettings
   , setSettings
-  , parseSettings
   ) where
 
 import           Codec.Picture
@@ -21,6 +20,8 @@ import           Data.ByteString        (ByteString)
 import qualified Data.ByteString        as BS
 import           Data.ByteString.Base64 (decodeBase64)
 import           Data.Foldable          (toList)
+import           Data.Function          ((&))
+import           Data.Functor           ((<&>))
 import           Data.Map.Strict        (Map)
 import qualified Data.Map.Strict        as Map
 import           Data.Text              (Text)
@@ -30,6 +31,9 @@ import qualified Data.Text.Lazy         as TL
 import           Data.Text.Read         (decimal)
 import           Text.XML
 import           Text.XML.Cursor
+
+listToEither :: String -> [b] -> Either String b
+listToEither = foldr ((<>) . Right) . Left
 
 -- | Decode binary data encoded in base64 text.
 decodeBinary :: Text -> [ByteString]
@@ -121,6 +125,7 @@ params cursor = do
 -- | Preset represents a Krita brush preset.
 data Preset = Preset { presetName        :: !Text
                      , presetPaintop     :: !Text
+                     , presetVersion     :: !Text
                      , presetParams      :: Map Text Param
                      , embeddedResources :: [Resource]
                      , presetIcon        :: (DynamicImage, Meta.Metadatas)
@@ -133,6 +138,7 @@ instance Show Preset where
     unwords [ "Preset"
             , show presetName
             , show presetPaintop
+            , show presetVersion
             , show presetParams
             , show embeddedResources
             , "[" ++ show iconWidth ++ "x" ++ show iconHeight ++ "]"
@@ -141,36 +147,28 @@ instance Show Preset where
       iconWidth  = dynamicMap imageWidth  (fst presetIcon)
       iconHeight = dynamicMap imageHeight (fst presetIcon)
 
--- | Select and parse Preset elements in an XML document.
---
--- A DynamicImage and associated Metadatas records are required to fully
--- construct a Preset record, so must be passed in.
-presets :: Cursor -> DynamicImage -> Meta.Metadatas -> [Preset]
-presets cursor icon meta = do
-  presetName    <- attribute "name" cursor
-  presetPaintop <- attribute "paintopid" cursor
-  resourceCount <- attribute "embedded_resources" cursor >>= parseInt
-
-  let presetParams      = Map.fromList $ cursor $/ params
-      embeddedResources = cursor $/ element "resources" &/ resources
-      presetIcon        = (icon, meta)
-
-  -- Sanity check: were the expected number of resources loaded?
-  guard (length embeddedResources == resourceCount)
-
-  return $ Preset{..}
-
 -- | Decode binary KPP file data (PNG data) into a Preset.
 decodeKPP :: ByteString -> Either String Preset
 decodeKPP bytes = do
-  -- 1. Decode PNG data
-  (icon, meta) <- decodePngWithMetadata bytes
+  presetIcon@(_, meta) <- decodePngWithMetadata bytes
 
-  -- 2. Lookup settings XML in metadata
-  xml <- getSettings meta
+  presetVersion <- getVersion meta
+  cursor        <- getSettings meta >>= parseSettings <&> fromDocument
 
-  -- 3. Parse settings XML
-  parseSettings xml icon meta
+  let presetParams      = (cursor $/ params) & Map.fromList
+      embeddedResources = cursor $/ element "resources" &/ resources
+
+  listToEither "invalid preset settings" $ do
+    presetName    <- attribute "name" cursor
+    presetPaintop <- attribute "paintopid" cursor
+    resourceCount <- attribute "embedded_resources" cursor >>= parseInt
+
+    -- Sanity check: were the expected number of resources loaded?
+    guard (length embeddedResources == resourceCount)
+
+    return Preset{..}
+  where
+    parseSettings = first show . parseText def
 
 -- | Encode a Preset as binary PNG data.
 encodeKPP :: Preset -> Either String ByteString
@@ -205,15 +203,3 @@ getSettings meta =
 setSettings :: Meta.Metadatas -> TL.Text -> Meta.Metadatas
 setSettings meta xml = Meta.insert presetSettingsKey value meta
   where value = Meta.String $ TL.unpack xml
-
--- | Parse preset settings XML.
---
--- The XML document should contain the settings for exactly one
--- preset.
-parseSettings :: TL.Text -> DynamicImage -> Meta.Metadatas -> Either String Preset
-parseSettings xml icon meta = do
-  doc <- first show $ parseText def xml
-  case presets (fromDocument doc) icon meta of
-    []       -> Left "invalid preset XML"
-    [preset] -> Right preset
-    _        -> Left "multiple presets found"

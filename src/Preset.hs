@@ -24,7 +24,6 @@ import           Data.Function          ((&))
 import           Data.Functor           ((<&>))
 import           Data.Map.Strict        (Map)
 import qualified Data.Map.Strict        as Map
-import           Data.Text              (Text)
 import qualified Data.Text              as T
 import           Data.Text.Encoding     (encodeUtf8)
 import qualified Data.Text.Lazy         as TL
@@ -36,22 +35,22 @@ listToEither :: String -> [b] -> Either String b
 listToEither = foldr ((<>) . Right) . Left
 
 -- | Decode binary data encoded in base64 text.
-decodeBinary :: Text -> [ByteString]
+decodeBinary :: T.Text -> [ByteString]
 decodeBinary = toList . decodeBase64 . encodeUtf8
 
 -- | Parse an Int from a Text representation.
 --
 -- The integer must contain only the digits 0-9 with no spaces.
-parseInt :: Alternative f => Text -> f Int
+parseInt :: Alternative f => T.Text -> f Int
 parseInt text = case decimal text of
   Right (n, "") -> pure n
   _             -> empty
 
 -- | Resource is a type for embedded resources.
-data Resource = Resource { resourceName :: !Text
-                         , resourceFile :: !Text
-                         , resourceType :: !Text
-                         , resourceCsum :: !Text
+data Resource = Resource { resourceName :: !T.Text
+                         , resourceFile :: !T.Text
+                         , resourceType :: !T.Text
+                         , resourceCsum :: !T.Text
                          , resourceData :: !ByteString
                          }
 
@@ -84,7 +83,7 @@ resources cursor = do
 --
 -- This value has a type, which can be "string" (for textual data) or
 -- "bytearray" (for binary data, encoded in base64).
-data Param = String !Text
+data Param = String !T.Text
            | Binary !ByteString
 
 -- | Convert a ByteString to a short String for display purposes. Long
@@ -109,7 +108,7 @@ instance Show Param where
   show (Binary bytes) = "Binary " <> showBinary bytes
 
 -- | Select parameter elements and parse them into Param tables.
-params :: Cursor -> [(Text, Param)]
+params :: Cursor -> [(T.Text, Param)]
 params cursor = do
   paramName <- attribute "name" cursor
   paramType <- attribute "type" cursor
@@ -123,10 +122,10 @@ params cursor = do
   return (paramName, paramValue)
 
 -- | Preset represents a Krita brush preset.
-data Preset = Preset { presetName        :: !Text
-                     , presetPaintop     :: !Text
-                     , presetVersion     :: !Text
-                     , presetParams      :: Map Text Param
+data Preset = Preset { presetName        :: !T.Text
+                     , presetPaintop     :: !T.Text
+                     , presetVersion     :: !T.Text
+                     , presetParams      :: Map T.Text Param
                      , embeddedResources :: [Resource]
                      , presetIcon        :: (DynamicImage, Meta.Metadatas)
                      }

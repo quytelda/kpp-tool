@@ -21,7 +21,6 @@ import           Data.ByteString        (ByteString)
 import qualified Data.ByteString        as BS
 import           Data.ByteString.Base64 (decodeBase64)
 import           Data.Foldable          (toList)
-import           Data.Function          ((&))
 import           Data.Functor           ((<&>))
 import           Data.Map.Strict        (Map)
 import qualified Data.Map.Strict        as Map
@@ -70,7 +69,7 @@ instance Show Resource where
 -- | Select resource elements and parse them into Resource structures.
 --
 -- Any content is appropriately decoded from base64 into byte data.
-resources :: Cursor -> [Resource]
+resources :: Cursor -> [(T.Text, Resource)]
 resources cursor = do
   resourceName <- attribute "name" cursor
   resourceType <- attribute "type" cursor
@@ -78,7 +77,7 @@ resources cursor = do
   resourceCsum <- attribute "md5sum" cursor
   resourceData <- descendant cursor >>= content >>= decodeBinary
 
-  return $ Resource{..}
+  return (resourceName, Resource{..})
 
 -- | A Param represents the value of a preset parameter.
 --
@@ -127,7 +126,7 @@ data Preset = Preset { presetName        :: !T.Text
                      , presetPaintop     :: !T.Text
                      , presetVersion     :: !T.Text
                      , presetParams      :: Map T.Text Param
-                     , embeddedResources :: [Resource]
+                     , embeddedResources :: Map T.Text Resource
                      , presetIcon        :: (DynamicImage, Meta.Metadatas)
                      }
 
@@ -155,8 +154,8 @@ decodeKPP bytes = do
   presetVersion <- getVersion meta
   cursor        <- getSettings meta >>= parseSettings <&> fromDocument
 
-  let presetParams      = (cursor $/ params) & Map.fromList
-      embeddedResources = cursor $/ element "resources" &/ resources
+  let presetParams      = Map.fromList $ cursor $/ params
+      embeddedResources = Map.fromList $ cursor $/ element "resources" &/ resources
 
   toEither "invalid preset settings" $ do
     presetName    <- attribute "name" cursor

@@ -18,7 +18,7 @@ import           Control.Applicative
 import           Data.Bifunctor         (first)
 import           Data.ByteString        (ByteString)
 import qualified Data.ByteString        as BS
-import           Data.ByteString.Base64 (decodeBase64)
+import           Data.ByteString.Base64 (decodeBase64, isBase64)
 import           Data.Foldable          (toList)
 import           Data.Map.Strict        (Map)
 import qualified Data.Map.Strict        as Map
@@ -110,6 +110,10 @@ instance Show Param where
   show (Binary bytes) = "Binary " <> showBinary bytes
 
 -- | Select parameter elements and parse them into Param tables.
+--
+-- I'm not sure why, but some binary data in KPP parameters might be
+-- base64-encoded twice; the issue seems to apply to parameter values
+-- in both versions 2.2 and 5.0, but is not consistent.
 params :: Cursor -> [(T.Text, Param)]
 params cursor = do
   paramName <- attribute "name" cursor
@@ -118,10 +122,16 @@ params cursor = do
 
   paramValue <- case paramType of
     "string"    -> String <$> return paramData
-    "bytearray" -> Binary <$> decodeBinary paramData
+    "bytearray" -> Binary <$> decodeBinary' paramData
     _           -> mempty
 
   return (paramName, paramValue)
+  where
+    decodeBinary' text = do
+      bin <- decodeBinary text
+      if isBase64 bin
+        then toList $ decodeBase64 bin
+        else return bin
 
 -- | Preset represents a Krita brush preset.
 data Preset = Preset { presetName        :: !T.Text

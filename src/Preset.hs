@@ -8,6 +8,7 @@ module Preset
   , encodeKPP
   , getSettings
   , setSettings
+  , getParam
   ) where
 
 import           Codec.Picture
@@ -185,6 +186,7 @@ presetSettingsKey = Meta.Unknown "preset"
 presetVersionKey :: Meta.Keys Meta.Value
 presetVersionKey = Meta.Unknown "version"
 
+-- | Locate the preset version from the PNG metadata table.
 getVersion :: Meta.Metadatas -> Either String T.Text
 getVersion meta =
   case Meta.lookup presetVersionKey meta of
@@ -202,3 +204,7 @@ getSettings meta =
 setSettings :: Meta.Metadatas -> TL.Text -> Meta.Metadatas
 setSettings meta xml = Meta.insert presetSettingsKey value meta
   where value = Meta.String $ TL.unpack xml
+
+-- | Lookup the value of a preset parameter.
+getParam :: T.Text -> Preset -> Maybe Param
+getParam key = Map.lookup key . presetParams

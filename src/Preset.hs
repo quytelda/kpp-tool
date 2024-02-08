@@ -15,13 +15,11 @@ import           Codec.Picture
 import qualified Codec.Picture.Metadata as Meta
 import           Codec.Picture.Png      (decodePngWithMetadata)
 import           Control.Applicative
-import           Control.Monad
 import           Data.Bifunctor         (first)
 import           Data.ByteString        (ByteString)
 import qualified Data.ByteString        as BS
 import           Data.ByteString.Base64 (decodeBase64)
 import           Data.Foldable          (toList)
-import           Data.Functor           ((<&>))
 import           Data.Map.Strict        (Map)
 import qualified Data.Map.Strict        as Map
 import qualified Data.Text              as T
@@ -33,6 +31,10 @@ import           Text.XML.Cursor
 
 toEither :: Foldable t => a -> t b -> Either a b
 toEither = foldr (const . Right) . Left
+
+-- | Equivalent to attributeText from Text.XML.Types for xml-conduit
+attributeText :: Name -> Element -> Maybe T.Text
+attributeText name = Map.lookup name . elementAttributes
 
 -- | Decode binary data encoded in base64 text.
 decodeBinary :: T.Text -> [ByteString]
@@ -152,21 +154,19 @@ decodeKPP bytes = do
   presetIcon@(_, meta) <- decodePngWithMetadata bytes
 
   presetVersion <- getVersion meta
-  cursor        <- getSettings meta >>= parseSettings <&> fromDocument
+  doc           <- getSettings meta >>= parseSettings
 
-  let presetParams      = Map.fromList $ cursor $/ params
+  presetName    <- getName    $ documentRoot doc
+  presetPaintop <- getPaintop $ documentRoot doc
+
+  let cursor            = fromDocument doc
+      presetParams      = Map.fromList $ cursor $/ params
       embeddedResources = Map.fromList $ cursor $/ element "resources" &/ resources
 
-  toEither "invalid preset settings" $ do
-    presetName    <- attribute "name" cursor
-    presetPaintop <- attribute "paintopid" cursor
-    resourceCount <- attribute "embedded_resources" cursor >>= parseInt
-
-    -- Sanity check: were the expected number of resources loaded?
-    guard (length embeddedResources == resourceCount)
-
-    return Preset{..}
+  return Preset{..}
   where
+    getName    = toEither "missing preset name"      . attributeText "name"
+    getPaintop = toEither "missing preset paintopid" . attributeText "paintopid"
     parseSettings = first show . parseText def
 
 -- | Encode a Preset as binary PNG data.

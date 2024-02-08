@@ -32,8 +32,8 @@ import           Data.Text.Read         (decimal)
 import           Text.XML
 import           Text.XML.Cursor
 
-listToEither :: String -> [b] -> Either String b
-listToEither = foldr ((<>) . Right) . Left
+toEither :: Foldable t => a -> t b -> Either a b
+toEither = foldr (const . Right) . Left
 
 -- | Decode binary data encoded in base64 text.
 decodeBinary :: T.Text -> [ByteString]
@@ -158,7 +158,7 @@ decodeKPP bytes = do
   let presetParams      = (cursor $/ params) & Map.fromList
       embeddedResources = cursor $/ element "resources" &/ resources
 
-  listToEither "invalid preset settings" $ do
+  toEither "invalid preset settings" $ do
     presetName    <- attribute "name" cursor
     presetPaintop <- attribute "paintopid" cursor
     resourceCount <- attribute "embedded_resources" cursor >>= parseInt

@@ -126,6 +126,21 @@ instance Show Param where
   show (String text)  = "String " <> show text
   show (Binary bytes) = "Binary " <> showBinary bytes
 
+-- | Helper function to construct <param> elements.
+paramElement :: T.Text -> T.Text -> T.Text -> Node
+paramElement paramName paramType paramData = NodeElement $
+  Element { elementName       = "param"
+          , elementAttributes = Map.fromList [ ("name", paramName)
+                                             , ("type", paramType)
+                                             ]
+          , elementNodes      = [NodeContent paramData]
+          }
+
+-- | Render a Param to an XML element representation.
+paramToXML :: T.Text -> Param -> Node
+paramToXML paramName (String text)  = paramElement paramName "string" text
+paramToXML paramName (Binary bytes) = paramElement paramName "bytearray" $ encodeBase64 bytes
+
 -- | Select parameter elements and parse them into Param tables.
 --
 -- I'm not sure why, but some binary data in KPP parameters might be

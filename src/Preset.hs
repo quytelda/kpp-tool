@@ -94,17 +94,15 @@ instance Show Resource where
 -- Since this contains base64-encoded binary data, the resulting
 -- element content can be fairly long.
 resourceToXML :: Resource -> Node
-resourceToXML Resource{..} = NodeElement $
-  Element { elementName       = "resource"
-          , elementAttributes = attributeMap
-          , elementNodes      = [NodeContent $ encodeBase64 resourceData]
-          }
-  where
-    attributeMap = Map.fromList [ ("name",     resourceName)
-                                , ("filename", resourceFile)
-                                , ("type",     resourceType)
-                                , ("md5sum",   resourceCsum)
-                                ]
+resourceToXML Resource{..} =
+  let elementName       = "resource"
+      elementNodes      = [NodeContent $ encodeBase64 resourceData]
+      elementAttributes = Map.fromList [ ("name",     resourceName)
+                                       , ("filename", resourceFile)
+                                       , ("type",     resourceType)
+                                       , ("md5sum",   resourceCsum)
+                                       ]
+  in NodeElement Element{..}
 
 -- | Select resource elements and parse them into Resource structures.
 --
@@ -149,13 +147,13 @@ instance Show Param where
 
 -- | Helper function to construct <param> elements.
 paramElement :: T.Text -> T.Text -> T.Text -> Node
-paramElement paramName paramType paramData = NodeElement $
-  Element { elementName       = "param"
-          , elementAttributes = Map.fromList [ ("name", paramName)
-                                             , ("type", paramType)
-                                             ]
-          , elementNodes      = [NodeContent paramData]
-          }
+paramElement paramName paramType paramData =
+  let elementName       = "param"
+      elementNodes      = [NodeContent paramData]
+      elementAttributes = Map.fromList [ ("name", paramName)
+                                       , ("type", paramType)
+                                       ]
+  in NodeElement Element{..}
 
 -- | Render a Param to an XML element representation.
 paramToXML :: T.Text -> Param -> Node

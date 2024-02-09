@@ -166,12 +166,18 @@ decodeKPP bytes = do
   presetVersion <- getVersion meta
   doc           <- getSettings meta >>= parseSettings
 
-  presetName    <- getName    $ documentRoot doc
-  presetPaintop <- getPaintop $ documentRoot doc
+  let root = documentRoot doc
+  presetName    <- getName    root
+  presetPaintop <- getPaintop root
 
   let cursor            = fromDocument doc
       presetParams      = Map.fromList $ cursor $/ params
       embeddedResources = Map.fromList $ cursor $/ element "resources" &/ resources
+      resourceCount     = attributeText "embedded_resources" root >>= parseInt
+
+  case resourceCount of
+    Just n | n /= Map.size embeddedResources -> Left "embedded resource count mismatch"
+    _                                        -> return ()
 
   return Preset{..}
   where

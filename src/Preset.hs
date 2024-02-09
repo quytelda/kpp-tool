@@ -260,11 +260,12 @@ decodeKPP bytes = do
     parseSettings = first show . parseText def
 
 -- | Encode a Preset as binary PNG data.
-encodeKPP :: Preset -> Either String ByteString
-encodeKPP = undefined
-  -- 1. Render settings XML
-  -- 2. Insert settings into metadata
-  -- 3. Encode PNG data
+encodeKPP :: Preset -> Either String BL.ByteString
+encodeKPP preset@Preset{presetIcon = (icon, meta)} =
+  let renderSettings = def { rsUseCDATA = const True }
+      xml = renderText renderSettings $ presetToXML preset
+      meta' = setSettings meta xml
+  in encodeDynamicPngWithMetadata meta' icon
 
 -- | This is the metadata key for looking up the preset settings XML
 -- in the PNG metadata.

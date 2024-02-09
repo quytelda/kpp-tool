@@ -18,7 +18,7 @@ import           Control.Applicative
 import           Data.Bifunctor         (first)
 import           Data.ByteString        (ByteString)
 import qualified Data.ByteString        as BS
-import           Data.ByteString.Base64 (decodeBase64, isBase64)
+import           Data.ByteString.Base64
 import           Data.Foldable          (toList)
 import           Data.Map.Strict        (Map)
 import qualified Data.Map.Strict        as Map
@@ -67,6 +67,23 @@ instance Show Resource where
             , show resourceCsum
             , showBinary resourceData
             ]
+
+-- | Render a Resource into an XML element.
+--
+-- Since this contains base64-encoded binary data, the resulting
+-- element content can be fairly long.
+resourceToXML :: Resource -> Node
+resourceToXML Resource{..} = NodeElement $
+  Element { elementName       = "resource"
+          , elementAttributes = attributeMap
+          , elementNodes      = [NodeContent $ encodeBase64 resourceData]
+          }
+  where
+    attributeMap = Map.fromList [ ("name",     resourceName)
+                                , ("filename", resourceFile)
+                                , ("type",     resourceType)
+                                , ("md5sum",   resourceCsum)
+                                ]
 
 -- | Select resource elements and parse them into Resource structures.
 --

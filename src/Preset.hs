@@ -22,12 +22,17 @@ import           Data.ByteString.Base64
 import           Data.Foldable          (toList)
 import           Data.Map.Strict        (Map)
 import qualified Data.Map.Strict        as Map
+import           Data.String
 import qualified Data.Text              as T
 import           Data.Text.Encoding     (encodeUtf8)
 import qualified Data.Text.Lazy         as TL
 import           Data.Text.Read         (decimal)
 import           Text.XML
 import           Text.XML.Cursor
+
+-- | Generalized version of show that works for Text and ByteString.
+show_ :: (IsString c, Show a) => a -> c
+show_ = fromString . show
 
 toEither :: Foldable t => a -> t b -> Either a b
 toEither = foldr (const . Right) . Left
@@ -189,6 +194,27 @@ instance Show Preset where
     where
       iconWidth  = dynamicMap imageWidth  (fst presetIcon)
       iconHeight = dynamicMap imageHeight (fst presetIcon)
+
+-- | Generate a <resources> element containing a list of <resource> elements.
+resourcesToXML :: Map T.Text Resource -> Node
+resourcesToXML = NodeElement . Element "resources" mempty . fmap resourceToXML . Map.elems
+
+-- | Generate a preset settings XML Document for a Preset.
+presetToXML :: Preset -> Document
+presetToXML Preset{..} =
+  let prologue = Prologue [] Nothing []
+      epilogue = []
+
+      -- Root <Preset> Element
+      resourceCount     = show_ $ Map.size embeddedResources
+      paramElems        = Map.elems $ Map.mapWithKey paramToXML presetParams
+      elementName       = "Preset"
+      elementAttributes = Map.fromList [ ("name",               presetName)
+                                       , ("paintopid",          presetPaintop)
+                                       , ("embedded_resources", resourceCount)
+                                       ]
+      elementNodes      = resourcesToXML embeddedResources : paramElems
+  in Document prologue Element{..} epilogue
 
 -- | Decode binary KPP file data (PNG data) into a Preset.
 decodeKPP :: ByteString -> Either String Preset

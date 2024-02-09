@@ -19,6 +19,7 @@ import           Data.Bifunctor         (first)
 import           Data.ByteString        (ByteString)
 import qualified Data.ByteString        as BS
 import           Data.ByteString.Base64
+import qualified Data.ByteString.Lazy   as BL
 import           Data.Foldable          (toList)
 import           Data.Map.Strict        (Map)
 import qualified Data.Map.Strict        as Map
@@ -52,6 +53,21 @@ parseInt :: Alternative f => T.Text -> f Int
 parseInt text = case decimal text of
   Right (n, "") -> pure n
   _             -> empty
+
+-- | Encode a DynamicImage as a PNG with provided metadata (if possible).
+--
+-- JuicyPixels doesn't currently provide a function to encode a
+-- DynamicImage with metadata information.
+encodeDynamicPngWithMetadata :: Meta.Metadatas -> DynamicImage -> Either String BL.ByteString
+encodeDynamicPngWithMetadata meta (ImageRGB8 img)   = Right $ encodePngWithMetadata meta img
+encodeDynamicPngWithMetadata meta (ImageRGBA8 img)  = Right $ encodePngWithMetadata meta img
+encodeDynamicPngWithMetadata meta (ImageRGB16 img)  = Right $ encodePngWithMetadata meta img
+encodeDynamicPngWithMetadata meta (ImageRGBA16 img) = Right $ encodePngWithMetadata meta img
+encodeDynamicPngWithMetadata meta (ImageY8 img)     = Right $ encodePngWithMetadata meta img
+encodeDynamicPngWithMetadata meta (ImageY16 img)    = Right $ encodePngWithMetadata meta img
+encodeDynamicPngWithMetadata meta (ImageYA8 img)    = Right $ encodePngWithMetadata meta img
+encodeDynamicPngWithMetadata meta (ImageYA16 img)   = Right $ encodePngWithMetadata meta img
+encodeDynamicPngWithMetadata _ _                    = Left "Unsupported image format for PNG export"
 
 -- | Resource is a type for embedded resources.
 data Resource = Resource { resourceName :: !T.Text

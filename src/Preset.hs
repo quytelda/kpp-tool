@@ -9,6 +9,9 @@ module Preset
   , getSettings
   , setSettings
   , getParam
+  , describeResource
+  , describeParam
+  , describePreset
   ) where
 
 import           Codec.Picture
@@ -89,6 +92,16 @@ instance Show Resource where
             , showBinary resourceData
             ]
 
+-- | Pretty print a description of a resource.
+describeResource :: Resource -> T.Text
+describeResource Resource{..} = T.unlines $
+  [ "Name: " <> resourceName
+  , "Path: " <> resourceFile
+  , "Type: " <> resourceType
+  , "MD5: "  <> resourceCsum
+  , "Data: " <> showBinary resourceData
+  ]
+
 -- | Render a Resource into an XML element.
 --
 -- Since this contains base64-encoded binary data, the resulting
@@ -145,6 +158,10 @@ instance Show Param where
   show (String text)  = "String " <> show text
   show (Binary bytes) = "Binary " <> showBinary bytes
 
+describeParam :: T.Text -> Param -> T.Text
+describeParam name (String text)  = name <> ": " <> text
+describeParam name (Binary bytes) = name <> ": " <> showBinary bytes
+
 -- | Helper function to construct <param> elements.
 paramElement :: T.Text -> T.Text -> T.Text -> Node
 paramElement paramName paramType paramData =
@@ -193,10 +210,16 @@ data Preset = Preset { presetName        :: !T.Text
                      , presetIcon        :: (DynamicImage, Meta.Metadatas)
                      }
 
+presetIconDims :: Preset -> (Int, Int)
+presetIconDims Preset{presetIcon = (icon, _)} =
+  let iconWidth  = dynamicMap imageWidth  icon
+      iconHeight = dynamicMap imageHeight icon
+  in (iconWidth, iconHeight)
+
 -- | Preset records contain image data, so we provide a custom
 -- instance for Show that describes images in terms of dimensions.
 instance Show Preset where
-  show Preset{..} =
+  show preset@Preset{..} =
     unwords [ "Preset"
             , show presetName
             , show presetPaintop
@@ -206,8 +229,26 @@ instance Show Preset where
             , "[" ++ show iconWidth ++ "x" ++ show iconHeight ++ "]"
             ]
     where
-      iconWidth  = dynamicMap imageWidth  (fst presetIcon)
-      iconHeight = dynamicMap imageHeight (fst presetIcon)
+      (iconWidth, iconHeight) = presetIconDims preset
+
+describePreset :: Preset -> T.Text
+describePreset preset@Preset{..} = T.unlines $
+  [ "Name: "    <> presetName
+  , "Type: "    <> presetPaintop
+  , "Version: " <> presetVersion
+  , "Icon: "    <> show_ (presetIconDims preset)
+  , "\nParameters:"
+  ]
+  <>
+  map indent paramList
+  <>
+  [ "\nResources: " ]
+  <>
+  resourceList
+  where
+    indent = ("  " <>)
+    paramList    = Map.elems $ Map.mapWithKey describeParam presetParams
+    resourceList = Map.elems $ Map.map describeResource embeddedResources
 
 -- | Generate a <resources> element containing a list of <resource> elements.
 resourcesToXML :: Map T.Text Resource -> Node

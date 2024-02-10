@@ -126,12 +126,12 @@ data Param = String !T.Text
 
 -- | Convert a ByteString to a short String for display purposes. Long
 -- ByteStrings are truncated.
-showBinary :: ByteString -> String
+showBinary :: (Semigroup s, IsString s) => ByteString -> s
 showBinary bytes
-  | size <= maxlen = show bytes
-  | otherwise      = show preview
-                     <> "... (+"
-                     <> show (size - maxlen)
+  | size <= maxlen = show_ bytes
+  | otherwise      = show_ preview
+                     <> "... ("
+                     <> show_ size
                      <> " bytes)"
     where
       size    = BS.length bytes

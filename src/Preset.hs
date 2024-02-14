@@ -93,8 +93,8 @@ instance Show Resource where
             ]
 
 -- | Pretty print a description of a resource.
-describeResource :: Resource -> T.Text
-describeResource Resource{..} = T.unlines $
+describeResource :: Resource -> [T.Text]
+describeResource Resource{..} =
   [ "Name: " <> resourceName
   , "Path: " <> resourceFile
   , "Type: " <> resourceType
@@ -158,9 +158,9 @@ instance Show Param where
   show (String text)  = "String " <> show text
   show (Binary bytes) = "Binary " <> showBinary bytes
 
-describeParam :: T.Text -> Param -> T.Text
-describeParam name (String text)  = name <> ": " <> text
-describeParam name (Binary bytes) = name <> ": " <> showBinary bytes
+describeParam :: T.Text -> Param -> [T.Text]
+describeParam name (String text)  = [name <> ": " <> text]
+describeParam name (Binary bytes) = [name <> ": " <> showBinary bytes]
 
 -- | Helper function to construct <param> elements.
 paramElement :: T.Text -> T.Text -> T.Text -> Node
@@ -231,8 +231,8 @@ instance Show Preset where
     where
       (iconWidth, iconHeight) = presetIconDims preset
 
-describePreset :: Preset -> T.Text
-describePreset preset@Preset{..} = T.unlines $
+describePreset :: Preset -> [T.Text]
+describePreset preset@Preset{..} =
   [ "Name: "    <> presetName
   , "Type: "    <> presetPaintop
   , "Version: " <> presetVersion
@@ -244,11 +244,11 @@ describePreset preset@Preset{..} = T.unlines $
   <>
   [ "\nResources: " ]
   <>
-  resourceList
+  map indent resourceList
   where
     indent = ("  " <>)
-    paramList    = Map.elems $ Map.mapWithKey describeParam presetParams
-    resourceList = Map.elems $ Map.map describeResource embeddedResources
+    paramList    = concat $ Map.mapWithKey describeParam presetParams
+    resourceList = concat $ Map.map describeResource embeddedResources
 
 -- | Generate a <resources> element containing a list of <resource> elements.
 resourcesToXML :: Map T.Text Resource -> Node

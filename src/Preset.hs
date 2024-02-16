@@ -12,6 +12,7 @@ module Preset
   , describeResource
   , describeParam
   , describePreset
+  , renamePreset
   ) where
 
 import           Codec.Picture
@@ -337,3 +338,9 @@ setSettings meta xml = Meta.insert presetSettingsKey value meta
 -- | Lookup the value of a preset parameter.
 getParam :: T.Text -> Preset -> Maybe Param
 getParam key = Map.lookup key . presetParams
+
+-- | Change the name of a preset, which is stored in the settings.
+--
+-- This is different from changing the filename of a preset.
+renamePreset :: Preset -> T.Text -> Preset
+renamePreset preset name = preset { presetName = name }

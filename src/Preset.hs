@@ -35,24 +35,24 @@ import           Data.Text.Read         (decimal)
 import           Text.XML
 import           Text.XML.Cursor
 
--- | Generalized version of show that works for Text and ByteString.
+-- | 'show_' is a generalized version of 'show' that can generate 'IsString' instances.
 show_ :: (IsString c, Show a) => a -> c
 show_ = fromString . show
 
 toEither :: Foldable t => a -> t b -> Either a b
 toEither = foldr (const . Right) . Left
 
--- | Equivalent to attributeText from Text.XML.Types for xml-conduit
+-- | Equivalent to @attributeText@ from @Text.XML.Types@ for xml-conduit
 attributeText :: Name -> Element -> Maybe T.Text
 attributeText name = Map.lookup name . elementAttributes
 
--- | Decode binary data encoded in base64 text.
+-- | Decode binary data encoded as base64 text.
 decodeBinary :: T.Text -> [ByteString]
 decodeBinary = toList . decodeBase64 . encodeUtf8
 
--- | Parse an Int from a Text representation.
+-- | Parse an 'Int' value from a 'T.Text' representation.
 --
--- The integer must contain only the digits 0-9 with no spaces.
+-- The text must contain only the digits 0-9 with no whitespace.
 parseInt :: Alternative f => T.Text -> f Int
 parseInt text = case decimal text of
   Right (n, "") -> pure n
@@ -61,7 +61,7 @@ parseInt text = case decimal text of
 -- | Encode a DynamicImage as a PNG with provided metadata (if possible).
 --
 -- JuicyPixels doesn't currently provide a function to encode a
--- DynamicImage with metadata information.
+-- 'DynamicImage' with metadata information.
 encodeDynamicPngWithMetadata :: Meta.Metadatas -> DynamicImage -> Either String BL.ByteString
 encodeDynamicPngWithMetadata meta (ImageRGB8 img)   = Right $ encodePngWithMetadata meta img
 encodeDynamicPngWithMetadata meta (ImageRGBA8 img)  = Right $ encodePngWithMetadata meta img
@@ -73,7 +73,7 @@ encodeDynamicPngWithMetadata meta (ImageYA8 img)    = Right $ encodePngWithMetad
 encodeDynamicPngWithMetadata meta (ImageYA16 img)   = Right $ encodePngWithMetadata meta img
 encodeDynamicPngWithMetadata _ _                    = Left "Unsupported image format for PNG export"
 
--- | Resource is a type for embedded resources.
+-- | 'Resource' is a type for embedded resources.
 data Resource = Resource { resourceName :: !T.Text
                          , resourceFile :: !T.Text
                          , resourceType :: !T.Text
@@ -81,8 +81,8 @@ data Resource = Resource { resourceName :: !T.Text
                          , resourceData :: !ByteString
                          }
 
--- | Resource records often contain really long binary strings, so we
--- provide a custom abbreviated instance for Show.
+-- | 'Resource' records usually contain really long binary strings, so
+-- we provide a custom instance for 'Show' that abbreviates the output.
 instance Show Resource where
   show Resource{..} =
     unwords [ "Resource"
@@ -93,7 +93,7 @@ instance Show Resource where
             , showBinary resourceData
             ]
 
--- | Pretty print a description of a resource.
+-- | Pretty print a description of a 'Resource'.
 describeResource :: Resource -> [T.Text]
 describeResource Resource{..} =
   [ "Name: " <> resourceName
@@ -103,10 +103,10 @@ describeResource Resource{..} =
   , "Data: " <> showBinary resourceData
   ]
 
--- | Render a Resource into an XML element.
+-- | Render a 'Resource' into an XML element.
 --
--- Since this contains base64-encoded binary data, the resulting
--- element content can be fairly long.
+-- Since 'Resource's contains base64-encoded binary data, the
+-- resulting element content can be fairly large.
 resourceToXML :: Resource -> Node
 resourceToXML Resource{..} =
   let elementName       = "resource"
@@ -118,9 +118,10 @@ resourceToXML Resource{..} =
                                        ]
   in NodeElement Element{..}
 
--- | Select resource elements and parse them into Resource structures.
+-- | Select @<resource>@ elements and parse them into 'Resource'
+-- records.
 --
--- Any content is appropriately decoded from base64 into byte data.
+-- Any content is appropriately decoded from base64 into binary data.
 resources :: Cursor -> [(T.Text, Resource)]
 resources cursor = do
   resourceName <- attribute "name" cursor
@@ -131,15 +132,15 @@ resources cursor = do
 
   return (resourceName, Resource{..})
 
--- | A Param represents the value of a preset parameter.
+-- | A 'Param' represents the value of a preset parameter.
 --
--- This value has a type, which can be "string" (for textual data) or
--- "bytearray" (for binary data, encoded in base64).
+-- Parameter values have a type which can be either "string" (for
+-- textual data) or "bytearray" (for binary data encoded in base64).
 data Param = String !T.Text
            | Binary !ByteString
 
--- | Convert a ByteString to a short String for display purposes. Long
--- ByteStrings are truncated.
+-- | Format 'ByteString' data for display purposes; long values are
+-- abbreviated.
 showBinary :: (Semigroup s, IsString s) => ByteString -> s
 showBinary bytes
   | size <= maxlen = show_ bytes
@@ -152,18 +153,19 @@ showBinary bytes
       maxlen  = 16
       preview = BS.take maxlen bytes
 
--- | Binary parameters are often quite long, so this custom Show
--- instance truncates the displayed ByteString if the input is too
+-- | Binary parameters are often quite long, so this custom 'Show'
+-- instance truncates the displayed 'ByteString' if the input is too
 -- long.
 instance Show Param where
   show (String text)  = "String " <> show text
   show (Binary bytes) = "Binary " <> showBinary bytes
 
+-- | Format parameter information for display purposes.
 describeParam :: T.Text -> Param -> [T.Text]
 describeParam name (String text)  = [name <> ": " <> text]
 describeParam name (Binary bytes) = [name <> ": " <> showBinary bytes]
 
--- | Helper function to construct <param> elements.
+-- | Helper function to construct @<param>@ elements.
 paramElement :: T.Text -> T.Text -> T.Text -> Node
 paramElement paramName paramType paramData =
   let elementName       = "param"
@@ -173,16 +175,17 @@ paramElement paramName paramType paramData =
                                        ]
   in NodeElement Element{..}
 
--- | Render a Param to an XML element representation.
+-- | Render a 'Param' to an XML element representation.
 paramToXML :: T.Text -> Param -> Node
 paramToXML paramName (String text)  = paramElement paramName "string" text
 paramToXML paramName (Binary bytes) = paramElement paramName "bytearray" $ encodeBase64 bytes
 
--- | Select parameter elements and parse them into Param tables.
+-- | Select parameter elements and parse them into a 'Param' table.
 --
--- I'm not sure why, but some binary data in KPP parameters might be
--- base64-encoded twice; the issue seems to apply to parameter values
--- in both versions 2.2 and 5.0, but is not consistent.
+-- Note: I'm not sure why, but some binary data in KPP parameters
+-- might be base64-encoded twice; the issue seems to apply to
+-- parameter values in both versions 2.2 and 5.0, but is not
+-- consistent.
 params :: Cursor -> [(T.Text, Param)]
 params cursor = do
   paramName <- attribute "name" cursor
@@ -202,7 +205,7 @@ params cursor = do
         then toList $ decodeBase64 bin
         else return bin
 
--- | Preset represents a Krita brush preset.
+-- | A 'Preset' represents a Krita brush preset.
 data Preset = Preset { presetName        :: !T.Text
                      , presetPaintop     :: !T.Text
                      , presetVersion     :: !T.Text
@@ -211,14 +214,15 @@ data Preset = Preset { presetName        :: !T.Text
                      , presetIcon        :: (DynamicImage, Meta.Metadatas)
                      }
 
+-- | Get the dimensions of a preset's icon.
 presetIconDims :: Preset -> (Int, Int)
 presetIconDims Preset{presetIcon = (icon, _)} =
   let iconWidth  = dynamicMap imageWidth  icon
       iconHeight = dynamicMap imageHeight icon
   in (iconWidth, iconHeight)
 
--- | Preset records contain image data, so we provide a custom
--- instance for Show that describes images in terms of dimensions.
+-- | 'Preset' records contain image data, so we provide a custom
+-- instance for 'Show' that describes images in terms of dimensions.
 instance Show Preset where
   show preset@Preset{..} =
     unwords [ "Preset"
@@ -232,6 +236,7 @@ instance Show Preset where
     where
       (iconWidth, iconHeight) = presetIconDims preset
 
+-- | Generate a pretty description of a 'Preset'.
 describePreset :: Preset -> [T.Text]
 describePreset preset@Preset{..} =
   [ "Name: "    <> presetName
@@ -251,11 +256,11 @@ describePreset preset@Preset{..} =
     paramList    = concat $ Map.mapWithKey describeParam presetParams
     resourceList = concat $ Map.map describeResource embeddedResources
 
--- | Generate a <resources> element containing a list of <resource> elements.
+-- | Generate a @<resources>@ element containing a list of @<resource>@ elements.
 resourcesToXML :: Map T.Text Resource -> Node
 resourcesToXML = NodeElement . Element "resources" mempty . fmap resourceToXML . Map.elems
 
--- | Generate a preset settings XML Document for a Preset.
+-- | Generate a preset settings XML Document for a 'Preset'.
 presetToXML :: Preset -> Document
 presetToXML Preset{..} =
   let prologue = Prologue [] Nothing []
@@ -272,7 +277,7 @@ presetToXML Preset{..} =
       elementNodes      = resourcesToXML embeddedResources : paramElems
   in Document prologue Element{..} epilogue
 
--- | Decode binary KPP file data (PNG data) into a Preset.
+-- | Decode binary KPP file data (PNG data) into a 'Preset'.
 decodeKPP :: ByteString -> Either String Preset
 decodeKPP bytes = do
   presetIcon@(_, meta) <- decodePngWithMetadata bytes
@@ -299,7 +304,7 @@ decodeKPP bytes = do
     getPaintop = toEither "missing preset paintopid" . attributeText "paintopid"
     parseSettings = first show . parseText def
 
--- | Encode a Preset as binary PNG data.
+-- | Encode a 'Preset' as binary PNG data.
 encodeKPP :: Preset -> Either String BL.ByteString
 encodeKPP preset@Preset{presetIcon = (icon, meta)} =
   let renderSettings = def { rsUseCDATA = const True }

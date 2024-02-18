@@ -12,7 +12,7 @@ module Preset
   , describeResource
   , describeParam
   , describePreset
-  , renamePreset
+  , setPresetName
   ) where
 
 import           Codec.Picture
@@ -42,6 +42,20 @@ import           Text.XML.Cursor
 show_ :: (IsString c, Show a) => a -> c
 show_ = fromString . show
 
+-- | Format 'ByteString' data for display purposes; long values are
+-- abbreviated.
+showBinary :: (Semigroup s, IsString s) => ByteString -> s
+showBinary bytes
+  | size <= maxlen = show_ bytes
+  | otherwise      = show_ preview
+                     <> "... ("
+                     <> show_ size
+                     <> " bytes)"
+    where
+      size    = BS.length bytes
+      maxlen  = 16
+      preview = BS.take maxlen bytes
+
 toEither :: Foldable t => a -> t b -> Either a b
 toEither = foldr (const . Right) . Left
 
@@ -66,81 +80,20 @@ parseInt text = case decimal text of
 -- JuicyPixels doesn't currently provide a function to encode a
 -- 'DynamicImage' with metadata information.
 encodeDynamicPngWithMetadata :: Meta.Metadatas -> DynamicImage -> Either String BL.ByteString
-encodeDynamicPngWithMetadata meta (ImageRGB8 img)   = Right $ encodePngWithMetadata meta img
-encodeDynamicPngWithMetadata meta (ImageRGBA8 img)  = Right $ encodePngWithMetadata meta img
-encodeDynamicPngWithMetadata meta (ImageRGB16 img)  = Right $ encodePngWithMetadata meta img
+encodeDynamicPngWithMetadata meta (ImageRGB8   img) = Right $ encodePngWithMetadata meta img
+encodeDynamicPngWithMetadata meta (ImageRGBA8  img) = Right $ encodePngWithMetadata meta img
+encodeDynamicPngWithMetadata meta (ImageRGB16  img) = Right $ encodePngWithMetadata meta img
 encodeDynamicPngWithMetadata meta (ImageRGBA16 img) = Right $ encodePngWithMetadata meta img
-encodeDynamicPngWithMetadata meta (ImageY8 img)     = Right $ encodePngWithMetadata meta img
-encodeDynamicPngWithMetadata meta (ImageY16 img)    = Right $ encodePngWithMetadata meta img
-encodeDynamicPngWithMetadata meta (ImageYA8 img)    = Right $ encodePngWithMetadata meta img
-encodeDynamicPngWithMetadata meta (ImageYA16 img)   = Right $ encodePngWithMetadata meta img
-encodeDynamicPngWithMetadata _ _                    = Left "Unsupported image format for PNG export"
+encodeDynamicPngWithMetadata meta (ImageY8     img) = Right $ encodePngWithMetadata meta img
+encodeDynamicPngWithMetadata meta (ImageY16    img) = Right $ encodePngWithMetadata meta img
+encodeDynamicPngWithMetadata meta (ImageYA8    img) = Right $ encodePngWithMetadata meta img
+encodeDynamicPngWithMetadata meta (ImageYA16   img) = Right $ encodePngWithMetadata meta img
+encodeDynamicPngWithMetadata _    _                 = Left "Unsupported image format for PNG export"
 
+-- | Build a lazy 'TL.Text' string from a list of 'Builder's
+-- representing lines.
 buildFromLines :: [Builder] -> TL.Text
 buildFromLines = TLB.toLazyText . mconcat . intersperse "\n"
-
--- | 'Resource' is a type for embedded resources.
-data Resource = Resource { resourceName :: !T.Text
-                         , resourceFile :: !T.Text
-                         , resourceType :: !T.Text
-                         , resourceCsum :: !T.Text
-                         , resourceData :: !ByteString
-                         }
-
--- | 'Resource' records usually contain really long binary strings, so
--- we provide a custom instance for 'Show' that abbreviates the output.
-instance Show Resource where
-  show Resource{..} =
-    unwords [ "Resource"
-            , show resourceName
-            , show resourceFile
-            , show resourceType
-            , show resourceCsum
-            , showBinary resourceData
-            ]
-
--- | Pretty print a description of a 'Resource'.
-describeResource_ :: Resource -> [TLB.Builder]
-describeResource_ Resource{..} =
-  [ "Name: " <> TLB.fromText resourceName
-  , "Path: " <> TLB.fromText resourceFile
-  , "Type: " <> TLB.fromText resourceType
-  , "MD5: "  <> TLB.fromText resourceCsum
-  , "Data: " <> showBinary resourceData
-  ]
-
--- | Pretty print a description of a 'Resource'.
-describeResource :: Resource -> TL.Text
-describeResource = buildFromLines . describeResource_
-
--- | Render a 'Resource' into an XML element.
---
--- Since 'Resource's contains base64-encoded binary data, the
--- resulting element content can be fairly large.
-resourceToXML :: Resource -> Node
-resourceToXML Resource{..} =
-  let elementName       = "resource"
-      elementNodes      = [NodeContent $ encodeBase64 resourceData]
-      elementAttributes = Map.fromList [ ("name",     resourceName)
-                                       , ("filename", resourceFile)
-                                       , ("type",     resourceType)
-                                       , ("md5sum",   resourceCsum)
-                                       ]
-  in NodeElement Element{..}
-
--- | Select @<resource>@ elements and parse them into 'Resource'
--- records.
---
--- Any content is appropriately decoded from base64 into binary data.
-resources :: Cursor -> [(T.Text, Resource)]
-resources cursor = do
-  resourceName <- attribute "name" cursor
-  resourceType <- attribute "type" cursor
-  resourceFile <- attribute "filename" cursor
-  resourceCsum <- attribute "md5sum" cursor
-  resourceData <- descendant cursor >>= content >>= decodeBinary
-
-  return (resourceName, Resource{..})
 
 -- | A 'Param' represents the value of a preset parameter.
 --
@@ -148,20 +101,6 @@ resources cursor = do
 -- textual data) or "bytearray" (for binary data encoded in base64).
 data Param = String !T.Text
            | Binary !ByteString
-
--- | Format 'ByteString' data for display purposes; long values are
--- abbreviated.
-showBinary :: (Semigroup s, IsString s) => ByteString -> s
-showBinary bytes
-  | size <= maxlen = show_ bytes
-  | otherwise      = show_ preview
-                     <> "... ("
-                     <> show_ size
-                     <> " bytes)"
-    where
-      size    = BS.length bytes
-      maxlen  = 16
-      preview = BS.take maxlen bytes
 
 -- | Binary parameters are often quite long, so this custom 'Show'
 -- instance truncates the displayed 'ByteString' if the input is too
@@ -194,31 +133,54 @@ paramToXML :: T.Text -> Param -> Node
 paramToXML paramName (String text)  = paramElement paramName "string" text
 paramToXML paramName (Binary bytes) = paramElement paramName "bytearray" $ encodeBase64 bytes
 
--- | Select parameter elements and parse them into a 'Param' table.
+-- | 'Resource' is a type for embedded resources.
+data Resource = Resource { resourceName :: !T.Text
+                         , resourceFile :: !T.Text
+                         , resourceType :: !T.Text
+                         , resourceCsum :: !T.Text
+                         , resourceData :: !ByteString
+                         }
+
+-- | 'Resource' records usually contain really long binary strings, so
+-- we provide a custom instance for 'Show' that abbreviates the output.
+instance Show Resource where
+  show Resource{..} =
+    unwords [ "Resource"
+            , show resourceName
+            , show resourceFile
+            , show resourceType
+            , show resourceCsum
+            , showBinary resourceData
+            ]
+
+-- | Pretty print a description of a 'Resource'.
+describeResource_ :: Resource -> [Builder]
+describeResource_ Resource{..} =
+  [ "Name: " <> TLB.fromText resourceName
+  , "Path: " <> TLB.fromText resourceFile
+  , "Type: " <> TLB.fromText resourceType
+  , "MD5: "  <> TLB.fromText resourceCsum
+  , "Data: " <> showBinary resourceData
+  ]
+
+-- | Pretty print a description of a 'Resource'.
+describeResource :: Resource -> TL.Text
+describeResource = buildFromLines . describeResource_
+
+-- | Render a 'Resource' into an XML element.
 --
--- Note: I'm not sure why, but some binary data in KPP parameters
--- might be base64-encoded twice; the issue seems to apply to
--- parameter values in both versions 2.2 and 5.0, but is not
--- consistent.
-params :: Cursor -> [(T.Text, Param)]
-params cursor = do
-  paramName <- attribute "name" cursor
-  paramType <- attribute "type" cursor
-  paramData <- descendant cursor >>= content
-
-  paramValue <- case paramType of
-    "string"    -> String <$> return paramData
-    "bytearray" -> Binary <$> decodeBinary' paramData
-    _           -> mempty
-
-  return (paramName, paramValue)
-  where
-    decodeBinary' text = do
-      bin <- decodeBinary text
-      if isBase64 bin
-        then toList $ decodeBase64 bin
-        else return bin
-
+-- Since 'Resource's contains base64-encoded binary data, the
+-- resulting element content can be fairly large.
+resourceToXML :: Resource -> Node
+resourceToXML Resource{..} =
+  let elementName       = "resource"
+      elementNodes      = [NodeContent $ encodeBase64 resourceData]
+      elementAttributes = Map.fromList [ ("name",     resourceName)
+                                       , ("filename", resourceFile)
+                                       , ("type",     resourceType)
+                                       , ("md5sum",   resourceCsum)
+                                       ]
+  in NodeElement Element{..}
 -- | A 'Preset' represents a Krita brush preset.
 data Preset = Preset { presetName        :: !T.Text
                      , presetPaintop     :: !T.Text
@@ -295,6 +257,45 @@ presetToXML Preset{..} =
       elementNodes      = resourcesToXML embeddedResources : paramElems
   in Document prologue Element{..} epilogue
 
+-- | Select parameter elements and parse them into a 'Param' table.
+--
+-- Note: I'm not sure why, but some binary data in KPP parameters
+-- might be base64-encoded twice; the issue seems to apply to
+-- parameter values in both versions 2.2 and 5.0, but is not
+-- consistent.
+params :: Cursor -> [(T.Text, Param)]
+params cursor = do
+  paramName <- attribute "name" cursor
+  paramType <- attribute "type" cursor
+  paramData <- descendant cursor >>= content
+
+  paramValue <- case paramType of
+    "string"    -> String <$> return paramData
+    "bytearray" -> Binary <$> decodeBinary' paramData
+    _           -> mempty
+
+  return (paramName, paramValue)
+  where
+    decodeBinary' text = do
+      bin <- decodeBinary text
+      if isBase64 bin
+        then toList $ decodeBase64 bin
+        else return bin
+
+-- | Select @<resource>@ elements and parse them into 'Resource'
+-- records.
+--
+-- Any content is appropriately decoded from base64 into binary data.
+resources :: Cursor -> [(T.Text, Resource)]
+resources cursor = do
+  resourceName <- attribute "name" cursor
+  resourceType <- attribute "type" cursor
+  resourceFile <- attribute "filename" cursor
+  resourceCsum <- attribute "md5sum" cursor
+  resourceData <- descendant cursor >>= content >>= decodeBinary
+
+  return (resourceName, Resource{..})
+
 -- | Decode binary KPP file data (PNG data) into a 'Preset'.
 decodeKPP :: ByteString -> Either String Preset
 decodeKPP bytes = do
@@ -365,5 +366,5 @@ getParam key = Map.lookup key . presetParams
 -- | Change the name of a preset, which is stored in the settings.
 --
 -- This is different from changing the filename of a preset.
-renamePreset :: Preset -> T.Text -> Preset
-renamePreset preset name = preset { presetName = name }
+setPresetName :: Preset -> T.Text -> Preset
+setPresetName preset name = preset { presetName = name }

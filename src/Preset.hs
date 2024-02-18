@@ -25,12 +25,15 @@ import qualified Data.ByteString        as BS
 import           Data.ByteString.Base64
 import qualified Data.ByteString.Lazy   as BL
 import           Data.Foldable          (toList)
+import           Data.List              (intersperse)
 import           Data.Map.Strict        (Map)
 import qualified Data.Map.Strict        as Map
 import           Data.String
 import qualified Data.Text              as T
 import           Data.Text.Encoding     (encodeUtf8)
 import qualified Data.Text.Lazy         as TL
+import           Data.Text.Lazy.Builder (Builder)
+import qualified Data.Text.Lazy.Builder as TLB
 import           Data.Text.Read         (decimal)
 import           Text.XML
 import           Text.XML.Cursor
@@ -73,6 +76,9 @@ encodeDynamicPngWithMetadata meta (ImageYA8 img)    = Right $ encodePngWithMetad
 encodeDynamicPngWithMetadata meta (ImageYA16 img)   = Right $ encodePngWithMetadata meta img
 encodeDynamicPngWithMetadata _ _                    = Left "Unsupported image format for PNG export"
 
+buildFromLines :: [Builder] -> TL.Text
+buildFromLines = TLB.toLazyText . mconcat . intersperse "\n"
+
 -- | 'Resource' is a type for embedded resources.
 data Resource = Resource { resourceName :: !T.Text
                          , resourceFile :: !T.Text
@@ -94,14 +100,18 @@ instance Show Resource where
             ]
 
 -- | Pretty print a description of a 'Resource'.
-describeResource :: Resource -> [T.Text]
-describeResource Resource{..} =
-  [ "Name: " <> resourceName
-  , "Path: " <> resourceFile
-  , "Type: " <> resourceType
-  , "MD5: "  <> resourceCsum
+describeResource_ :: Resource -> [TLB.Builder]
+describeResource_ Resource{..} =
+  [ "Name: " <> TLB.fromText resourceName
+  , "Path: " <> TLB.fromText resourceFile
+  , "Type: " <> TLB.fromText resourceType
+  , "MD5: "  <> TLB.fromText resourceCsum
   , "Data: " <> showBinary resourceData
   ]
+
+-- | Pretty print a description of a 'Resource'.
+describeResource :: Resource -> TL.Text
+describeResource = buildFromLines . describeResource_
 
 -- | Render a 'Resource' into an XML element.
 --
@@ -161,9 +171,13 @@ instance Show Param where
   show (Binary bytes) = "Binary " <> showBinary bytes
 
 -- | Format parameter information for display purposes.
-describeParam :: T.Text -> Param -> [T.Text]
-describeParam name (String text)  = [name <> ": " <> text]
-describeParam name (Binary bytes) = [name <> ": " <> showBinary bytes]
+describeParam_ :: T.Text -> Param -> [Builder]
+describeParam_ name (String text)  = [TLB.fromText name <> ": " <> TLB.fromText text]
+describeParam_ name (Binary bytes) = [TLB.fromText name <> ": " <> showBinary bytes]
+
+-- | Format parameter information for display purposes.
+describeParam :: T.Text -> Param -> TL.Text
+describeParam name = buildFromLines . describeParam_ name
 
 -- | Helper function to construct @<param>@ elements.
 paramElement :: T.Text -> T.Text -> T.Text -> Node
@@ -237,11 +251,11 @@ instance Show Preset where
       (iconWidth, iconHeight) = presetIconDims preset
 
 -- | Generate a pretty description of a 'Preset'.
-describePreset :: Preset -> [T.Text]
-describePreset preset@Preset{..} =
-  [ "Name: "    <> presetName
-  , "Type: "    <> presetPaintop
-  , "Version: " <> presetVersion
+describePreset_ :: Preset -> [Builder]
+describePreset_ preset@Preset{..} =
+  [ "Name: "    <> TLB.fromText presetName
+  , "Type: "    <> TLB.fromText presetPaintop
+  , "Version: " <> TLB.fromText presetVersion
   , "Icon: "    <> show_ (presetIconDims preset)
   , "\nParameters:"
   ]
@@ -253,8 +267,12 @@ describePreset preset@Preset{..} =
   map indent resourceList
   where
     indent = ("  " <>)
-    paramList    = concat $ Map.mapWithKey describeParam presetParams
-    resourceList = concat $ Map.map describeResource embeddedResources
+    paramList    = concat $ Map.mapWithKey describeParam_ presetParams
+    resourceList = concat $ Map.map describeResource_ embeddedResources
+
+-- | Generate a pretty description of a 'Preset'.
+describePreset :: Preset -> TL.Text
+describePreset = buildFromLines . describePreset_
 
 -- | Generate a @<resources>@ element containing a list of @<resource>@ elements.
 resourcesToXML :: Map T.Text Resource -> Node

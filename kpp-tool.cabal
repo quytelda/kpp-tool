@@ -25,6 +25,7 @@ source-repository head
 
 library
   exposed-modules:
+      Describe
       Preset
   other-modules:
       Paths_kpp_tool

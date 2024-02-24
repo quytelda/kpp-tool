@@ -105,6 +105,10 @@ instance Show Param where
   show (String text)  = "String " <> show text
   show (Binary bytes) = "Binary " <> showBinary bytes
 
+instance Describe Param where
+  describe (String text)  = TL.fromStrict text
+  describe (Binary bytes) = showBinary bytes
+
 instance Describe (Map T.Text Param) where
   describeLines = concat . Map.mapWithKey describeParam
     where

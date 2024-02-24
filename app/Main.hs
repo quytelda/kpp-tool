@@ -14,9 +14,17 @@ import           Preset
 versioner :: Parser (a -> a)
 versioner = simpleVersioner $ showVersion version
 
+output :: Parser FilePath
+output = strOption
+  (  long "output"
+  <> short 'o'
+  <> help "Write output to FILE instead of stdout"
+  )
+
 -- | Runtime Operations
 data Operation = OpShow -- ^ Display a summary of information about a
                         -- preset.
+               | OpRename String (Maybe FilePath)
                deriving (Show)
 
 showOption :: Parser Operation
@@ -26,8 +34,16 @@ showOption = flag' OpShow
   <> help "Display a summary of preset settings"
   )
 
+renameOption :: Parser Operation
+renameOption = OpRename
+  <$> strOption (  long "rename"
+                <> short 'r'
+                <> help "Change the name of a preset"
+                )
+  <*> optional output
+
 operation :: Parser Operation
-operation = showOption
+operation = showOption <|> renameOption
 
 inputFile :: Parser FilePath
 inputFile = argument str (metavar "FILE")
@@ -65,6 +81,7 @@ main = do
   preset   <- either fail return $ decodeKPP contents
 
   case optOperation of
-    OpShow -> TLIO.putStrLn $ describe preset
+    OpShow       -> TLIO.putStrLn $ describe preset
+    OpRename _ _ -> undefined
 
   return ()

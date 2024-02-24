@@ -1,9 +1,12 @@
 {-# LANGUAGE RecordWildCards #-}
 module Main (main) where
 
-import qualified Data.ByteString     as BS
-import qualified Data.Text.Lazy.IO   as TLIO
-import           Data.Version        (showVersion)
+import qualified Data.ByteString      as BS
+import qualified Data.ByteString.Lazy as BL
+import           Data.Maybe           (fromMaybe)
+import qualified Data.Text            as T
+import qualified Data.Text.Lazy.IO    as TLIO
+import           Data.Version         (showVersion)
 import           Options.Applicative
 
 import           Describe
@@ -68,6 +71,21 @@ parser = info options
   <> header "kpp-tool - a CLI tool for inspecting and editing KPP files"
   )
 
+-- | Handler for OpShow operations.
+runShow :: Preset -> IO ()
+runShow = TLIO.putStrLn . describe
+
+-- | Handler for OpRename operations.
+runRename :: String -> FilePath -> Preset -> IO ()
+runRename newName path preset = do
+  bytes <- encode $ setPresetName preset newName'
+  BL.writeFile path bytes
+  putStrLn $ "Renamed " <> show oldName <> " to " <> show newName <> "."
+  where
+    oldName  = presetName preset
+    newName' = T.pack newName
+    encode = either fail return . encodeKPP
+
 main :: IO ()
 main = do
   opts@Options{..} <- execParser parser
@@ -81,7 +99,8 @@ main = do
   preset   <- either fail return $ decodeKPP contents
 
   case optOperation of
-    OpShow       -> TLIO.putStrLn $ describe preset
-    OpRename _ _ -> undefined
+    OpShow                 -> runShow preset
+    OpRename oldName mpath -> let path = fromMaybe optInput mpath
+                              in runRename oldName path preset
 
   return ()

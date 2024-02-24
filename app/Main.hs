@@ -1,8 +1,12 @@
+{-# LANGUAGE RecordWildCards #-}
 module Main (main) where
 
+import qualified Data.ByteString     as BS
+import qualified Data.Text.Lazy.IO   as TLIO
 import           Data.Version        (showVersion)
 import           Options.Applicative
 
+import           Describe
 import           Preset
 
 -- | A hidden version option (similar to 'helper') that displays the
@@ -49,4 +53,18 @@ parser = info options
   )
 
 main :: IO ()
-main = undefined
+main = do
+  opts@Options{..} <- execParser parser
+
+  -- argument debugging info
+  putStrLn $ show opts
+  putStrLn $ replicate 80 '-'
+
+  -- load input file
+  contents <- BS.readFile optInput
+  preset   <- either fail return $ decodeKPP contents
+
+  case optOperation of
+    OpShow -> TLIO.putStrLn $ describe preset
+
+  return ()

@@ -3,7 +3,8 @@
 {-# LANGUAGE RecordWildCards   #-}
 
 module Preset
-  ( Param(..)
+  ( version
+  , Param(..)
   , Preset(..)
   , Resource(..)
   , decodeKPP
@@ -36,6 +37,7 @@ import           Text.XML
 import           Text.XML.Cursor
 
 import           Describe
+import           Paths_kpp_tool         (version)
 
 -- | 'show_' is a generalized version of 'show' that can generate 'IsString' instances.
 show_ :: (IsString c, Show a) => a -> c

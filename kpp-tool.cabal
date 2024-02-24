@@ -40,6 +40,7 @@ library
     , base64 >=0.4.2 && <2.0
     , bytestring >=0.11
     , containers >=0.6
+    , optparse-applicative >=0.18
     , text >=2.0 && <3
     , xml-conduit >=1.9 && <2
   default-language: Haskell2010
@@ -56,6 +57,7 @@ executable kpp-tool-exe
     , bytestring >=0.11
     , containers >=0.6
     , kpp-tool
+    , optparse-applicative >=0.18
     , text >=2.0 && <3
     , xml-conduit >=1.9 && <2
   default-language: Haskell2010
@@ -77,6 +79,7 @@ test-suite kpp-tool-test
     , bytestring >=0.11
     , containers >=0.6
     , kpp-tool
+    , optparse-applicative >=0.18
     , text >=2.0 && <3
     , xml-conduit >=1.9 && <2
   default-language: Haskell2010

@@ -1,6 +1,7 @@
 {-# LANGUAGE RecordWildCards #-}
 module Main (main) where
 
+import           Control.Monad
 import qualified Data.ByteString      as BS
 import qualified Data.ByteString.Lazy as BL
 import           Data.Maybe           (fromMaybe)
@@ -24,9 +25,17 @@ output = strOption
   <> help "Write output to FILE instead of stdout"
   )
 
+param :: Parser String
+param = strOption
+  (  long "param"
+  <> short 'p'
+  <> help "Display the value of a preset parameter"
+  )
+
 -- | Runtime Operations
 data Operation = OpShow -- ^ Display a summary of information about a
                         -- preset.
+               | OpParams  [String]
                | OpRename String (Maybe FilePath)
                deriving (Show)
 
@@ -37,6 +46,9 @@ showOption = flag' OpShow
   <> help "Display a summary of preset settings"
   )
 
+paramsOption :: Parser Operation
+paramsOption = OpParams <$> many param
+
 renameOption :: Parser Operation
 renameOption = OpRename
   <$> strOption (  long "rename"
@@ -46,7 +58,7 @@ renameOption = OpRename
   <*> optional output
 
 operation :: Parser Operation
-operation = showOption <|> renameOption
+operation = showOption <|> renameOption <|> paramsOption
 
 inputFile :: Parser FilePath
 inputFile = argument str (metavar "FILE")
@@ -71,11 +83,11 @@ parser = info options
   <> header "kpp-tool - a CLI tool for inspecting and editing KPP files"
   )
 
--- | Handler for OpShow operations.
+-- | Handler for OpShow Operations
 runShow :: Preset -> IO ()
 runShow = TLIO.putStrLn . describe
 
--- | Handler for OpRename operations.
+-- | Handler for OpRename Operations
 runRename :: String -> FilePath -> Preset -> IO ()
 runRename newName path preset = do
   bytes <- encode $ setPresetName preset newName'
@@ -85,6 +97,13 @@ runRename newName path preset = do
     oldName  = presetName preset
     newName' = T.pack newName
     encode = either fail return . encodeKPP
+
+-- | Handler for OpParams Operations
+runParams :: [String] -> Preset -> IO ()
+runParams params preset = forM_ params $ \key ->
+  case getParam (T.pack key) preset of
+    Nothing  -> fail $ "unrecognized parameter: " <> key
+    Just val -> TLIO.putStrLn $ describe val
 
 main :: IO ()
 main = do
@@ -102,5 +121,6 @@ main = do
     OpShow                 -> runShow preset
     OpRename oldName mpath -> let path = fromMaybe optInput mpath
                               in runRename oldName path preset
+    OpParams params        -> runParams params preset
 
   return ()

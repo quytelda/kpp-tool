@@ -36,7 +36,8 @@ param = strOption
 data Operation = OpShow -- ^ Display a summary of information about a
                         -- preset.
                | OpParams  [String]
-               | OpRename String (Maybe FilePath)
+               | OpExtract String (Maybe FilePath)
+               | OpRename  String (Maybe FilePath)
                deriving (Show)
 
 showOption :: Parser Operation
@@ -57,8 +58,16 @@ renameOption = OpRename
                 )
   <*> optional output
 
+extractOption :: Parser Operation
+extractOption = OpExtract
+  <$> strOption (  long "extract"
+                <> short 'e'
+                <> help "Extract an embedded resource file"
+                )
+  <*> optional output
+
 operation :: Parser Operation
-operation = showOption <|> renameOption <|> paramsOption
+operation = showOption <|> renameOption <|> paramsOption <|> extractOption
 
 inputFile :: Parser FilePath
 inputFile = argument str (metavar "FILE")
@@ -105,6 +114,14 @@ runParams params preset = forM_ params $ \key ->
     Nothing  -> fail $ "unrecognized parameter: " <> key
     Just val -> TLIO.putStrLn $ describe val
 
+-- | Handler for OpExtract Operations
+runExtract :: String -> Maybe FilePath -> Preset -> IO ()
+runExtract name mpath preset =
+  case getResource (T.pack name) preset of
+    Nothing           -> fail $ "no such resource: " <> name
+    Just Resource{..} -> let path = fromMaybe (T.unpack resourceFile) mpath
+                         in BS.writeFile path resourceData
+
 main :: IO ()
 main = do
   opts@Options{..} <- execParser parser
@@ -119,8 +136,9 @@ main = do
 
   case optOperation of
     OpShow                 -> runShow preset
+    OpParams params        -> runParams params preset
+    OpExtract name mpath   -> runExtract name mpath preset
     OpRename oldName mpath -> let path = fromMaybe optInput mpath
                               in runRename oldName path preset
-    OpParams params        -> runParams params preset
 
   return ()

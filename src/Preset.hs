@@ -12,6 +12,7 @@ module Preset
   , getSettings
   , setSettings
   , getParam
+  , getResource
   , setPresetName
   ) where
 
@@ -349,6 +350,9 @@ setSettings meta xml = Meta.insert presetSettingsKey value meta
 -- | Lookup the value of a preset parameter.
 getParam :: T.Text -> Preset -> Maybe Param
 getParam key = Map.lookup key . presetParams
+
+getResource :: T.Text -> Preset -> Maybe Resource
+getResource name = Map.lookup name . embeddedResources
 
 -- | Change the name of a preset, which is stored in the settings.
 --

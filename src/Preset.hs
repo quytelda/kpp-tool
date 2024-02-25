@@ -351,6 +351,7 @@ setSettings meta xml = Meta.insert presetSettingsKey value meta
 getParam :: T.Text -> Preset -> Maybe Param
 getParam key = Map.lookup key . presetParams
 
+-- | Lookup an embedded resource by name in a preset's settings.
 getResource :: T.Text -> Preset -> Maybe Resource
 getResource name = Map.lookup name . embeddedResources
 

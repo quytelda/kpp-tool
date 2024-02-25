@@ -32,6 +32,9 @@ param = strOption
   <> help "Display the value of a preset parameter"
   )
 
+inputFile :: Parser FilePath
+inputFile = argument str (metavar "FILE")
+
 -- | Runtime Operations
 data Operation = OpShow -- ^ Display a summary of information about a
                         -- preset.
@@ -40,26 +43,26 @@ data Operation = OpShow -- ^ Display a summary of information about a
                | OpRename  String (Maybe FilePath)
                deriving (Show)
 
-showOption :: Parser Operation
-showOption = flag' OpShow
+opShow :: Parser Operation
+opShow = flag' OpShow
   (  long "show"
   <> short 's'
   <> help "Display a summary of preset settings"
   )
 
-paramsOption :: Parser Operation
-paramsOption = OpParams <$> many param
+opParams :: Parser Operation
+opParams = OpParams <$> many param
 
-renameOption :: Parser Operation
-renameOption = OpRename
+opRename :: Parser Operation
+opRename = OpRename
   <$> strOption (  long "rename"
                 <> short 'r'
                 <> help "Change the name of a preset"
                 )
   <*> optional output
 
-extractOption :: Parser Operation
-extractOption = OpExtract
+opExtract :: Parser Operation
+opExtract = OpExtract
   <$> strOption (  long "extract"
                 <> short 'e'
                 <> help "Extract an embedded resource file"
@@ -67,10 +70,10 @@ extractOption = OpExtract
   <*> optional output
 
 operation :: Parser Operation
-operation = showOption <|> renameOption <|> paramsOption <|> extractOption
-
-inputFile :: Parser FilePath
-inputFile = argument str (metavar "FILE")
+operation = opShow
+  <|> opParams
+  <|> opExtract
+  <|> opRename
 
 -- | 'Options' represents a selection of runtime configuration
 -- options and arguments.
@@ -134,6 +137,7 @@ main = do
   contents <- BS.readFile optInput
   preset   <- either fail return $ decodeKPP contents
 
+  -- Run the selected operation.
   case optOperation of
     OpShow                 -> runShow preset
     OpParams params        -> runParams params preset

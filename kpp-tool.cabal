@@ -38,6 +38,7 @@ library
   build-depends:
       JuicyPixels >=3.3 && <4
     , base >=4.7 && <5
+    , base16-bytestring >=1.0 && <2
     , base64 >=0.4.2 && <2.0
     , bytestring >=0.11
     , containers >=0.6
@@ -54,6 +55,7 @@ executable kpp-tool-exe
   build-depends:
       JuicyPixels >=3.3 && <4
     , base >=4.7 && <5
+    , base16-bytestring >=1.0 && <2
     , base64 >=0.4.2 && <2.0
     , bytestring >=0.11
     , containers >=0.6
@@ -76,6 +78,7 @@ test-suite kpp-tool-test
   build-depends:
       JuicyPixels >=3.3 && <4
     , base >=4.7 && <5
+    , base16-bytestring >=1.0 && <2
     , base64 >=0.4.2 && <2.0
     , bytestring >=0.11
     , containers >=0.6

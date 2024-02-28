@@ -7,6 +7,7 @@ module Preset
   , Param(..)
   , Preset(..)
   , Resource(..)
+  , verifyResource
   , decodeKPP
   , encodeKPP
   , getSettings
@@ -174,6 +175,10 @@ instance ToXML Resource where
                                          , ("md5sum",   resourceCsum)
                                          ]
     in Element{..}
+
+-- | Verify the MD5 checksum of a 'Resource' is correct.
+verifyResource :: Resource -> Bool
+verifyResource  = undefined
 
 -- | A 'Preset' represents a Krita brush preset.
 data Preset = Preset { presetName        :: !T.Text

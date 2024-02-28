@@ -27,6 +27,7 @@ library
   exposed-modules:
       Describe
       Preset
+      ToXML
   other-modules:
       Paths_kpp_tool
   autogen-modules:

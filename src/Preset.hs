@@ -39,6 +39,7 @@ import           Text.XML.Cursor
 
 import           Describe
 import           Paths_kpp_tool         (version)
+import           ToXML
 
 -- | 'show_' is a generalized version of 'show' that can generate 'IsString' instances.
 show_ :: (IsString c, Show a) => a -> c
@@ -164,16 +165,17 @@ instance Describe Resource where
 --
 -- Since 'Resource's contains base64-encoded binary data, the
 -- resulting element content can be fairly large.
-resourceToXML :: Resource -> Node
-resourceToXML Resource{..} =
-  let elementName       = "resource"
-      elementNodes      = [NodeContent $ encodeBase64 resourceData]
-      elementAttributes = Map.fromList [ ("name",     resourceName)
-                                       , ("filename", resourceFile)
-                                       , ("type",     resourceType)
-                                       , ("md5sum",   resourceCsum)
-                                       ]
-  in NodeElement Element{..}
+instance ToXML Resource where
+  toElement Resource{..} =
+    let elementName       = "resource"
+        elementNodes      = [NodeContent $ encodeBase64 resourceData]
+        elementAttributes = Map.fromList [ ("name",     resourceName)
+                                         , ("filename", resourceFile)
+                                         , ("type",     resourceType)
+                                         , ("md5sum",   resourceCsum)
+                                         ]
+    in Element{..}
+
 -- | A 'Preset' represents a Krita brush preset.
 data Preset = Preset { presetName        :: !T.Text
                      , presetPaintop     :: !T.Text
@@ -224,26 +226,26 @@ instance Describe Preset where
       paramList    = describeLines presetParams
       resourceList = concatMap describeLines embeddedResources
 
--- | Generate a @<resources>@ element containing a list of @<resource>@ elements.
-resourcesToXML :: Map T.Text Resource -> Node
-resourcesToXML = NodeElement . Element "resources" mempty . fmap resourceToXML . Map.elems
+instance ToXML (Map T.Text Resource) where
+  -- | Generate a @<resources>@ element containing a list of
+  -- @<resource>@ elements.
+  toElement m =
+    let elementName       = "resources"
+        elementAttributes = mempty
+        elementNodes      = toNode <$> Map.elems m
+    in Element{..}
 
--- | Generate a preset settings XML Document for a 'Preset'.
-presetToXML :: Preset -> Document
-presetToXML Preset{..} =
-  let prologue = Prologue [] Nothing []
-      epilogue = []
-
-      -- Root <Preset> Element
-      resourceCount     = show_ $ Map.size embeddedResources
-      paramElems        = Map.elems $ Map.mapWithKey paramToXML presetParams
-      elementName       = "Preset"
-      elementAttributes = Map.fromList [ ("name",               presetName)
-                                       , ("paintopid",          presetPaintop)
-                                       , ("embedded_resources", resourceCount)
-                                       ]
-      elementNodes      = resourcesToXML embeddedResources : paramElems
-  in Document prologue Element{..} epilogue
+instance ToXML Preset where
+  toElement Preset{..} =
+    let resourceCount     = show_ $ Map.size embeddedResources
+        paramElems        = Map.elems $ Map.mapWithKey paramToXML presetParams
+        elementName       = "Preset"
+        elementAttributes = Map.fromList [ ("name",               presetName)
+                                         , ("paintopid",          presetPaintop)
+                                         , ("embedded_resources", resourceCount)
+                                         ]
+        elementNodes      = toNode embeddedResources : paramElems
+    in Element{..}
 
 -- | Select parameter elements and parse them into a 'Param' table.
 --
@@ -315,7 +317,7 @@ decodeKPP bytes = do
 encodeKPP :: Preset -> Either String BL.ByteString
 encodeKPP preset@Preset{presetIcon = (icon, meta)} =
   let renderSettings = def { rsUseCDATA = const True }
-      xml = renderText renderSettings $ presetToXML preset
+      xml = renderText renderSettings $ toDocument preset
       meta' = setSettings meta xml
   in encodeDynamicPngWithMetadata meta' icon
 

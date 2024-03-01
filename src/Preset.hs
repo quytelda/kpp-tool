@@ -15,23 +15,28 @@ module Preset
   , getParam
   , getResource
   , setPresetName
+  , validateChecksums
   ) where
 
 import           Codec.Picture
 import qualified Codec.Picture.Metadata as Meta
 import           Codec.Picture.Png      (decodePngWithMetadata)
 import           Control.Applicative
+import           Control.Monad
+import qualified Crypto.Hash.MD5        as MD5
 import           Data.Bifunctor         (first)
 import           Data.ByteString        (ByteString)
 import qualified Data.ByteString        as BS
+import qualified Data.ByteString.Base16 as Base16
 import           Data.ByteString.Base64
 import qualified Data.ByteString.Lazy   as BL
+import           Data.Either
 import           Data.Foldable          (toList)
 import           Data.Map.Strict        (Map)
 import qualified Data.Map.Strict        as Map
 import           Data.String
 import qualified Data.Text              as T
-import           Data.Text.Encoding     (encodeUtf8)
+import           Data.Text.Encoding
 import qualified Data.Text.Lazy         as TL
 import qualified Data.Text.Lazy.Builder as TLB
 import           Data.Text.Read         (decimal)
@@ -45,6 +50,14 @@ import           ToXML
 -- | 'show_' is a generalized version of 'show' that can generate 'IsString' instances.
 show_ :: (IsString c, Show a) => a -> c
 show_ = fromString . show
+
+-- | Show a 'ByteString' using hexidecimal notation.
+toHex :: ByteString -> T.Text
+toHex = decodeASCII . Base16.encode
+
+-- | Parse a hexidecimal number into a binary 'ByteString'.
+fromHex :: T.Text -> Either String ByteString
+fromHex = Base16.decode . encodeUtf8
 
 -- | Format 'ByteString' data for display purposes; long values are
 -- abbreviated.
@@ -136,7 +149,7 @@ instance ToXML (T.Text, Param) where
 data Resource = Resource { resourceName :: !T.Text
                          , resourceFile :: !T.Text
                          , resourceType :: !T.Text
-                         , resourceCsum :: !T.Text
+                         , resourceCsum :: !ByteString
                          , resourceData :: !ByteString
                          }
 
@@ -148,7 +161,7 @@ instance Show Resource where
             , show resourceName
             , show resourceFile
             , show resourceType
-            , show resourceCsum
+            , show $ toHex resourceCsum
             , showBinary resourceData
             ]
 
@@ -157,7 +170,7 @@ instance Describe Resource where
     [ "Name: " <> TLB.fromText resourceName
     , "Path: " <> TLB.fromText resourceFile
     , "Type: " <> TLB.fromText resourceType
-    , "MD5: "  <> TLB.fromText resourceCsum
+    , "MD5: "  <> TLB.fromText (toHex resourceCsum)
     , "Data: " <> showBinary resourceData
     ]
 
@@ -172,13 +185,15 @@ instance ToXML Resource where
         elementAttributes = Map.fromList [ ("name",     resourceName)
                                          , ("filename", resourceFile)
                                          , ("type",     resourceType)
-                                         , ("md5sum",   resourceCsum)
+                                         , ("md5sum",   toHex resourceCsum)
                                          ]
     in Element{..}
 
 -- | Verify the MD5 checksum of a 'Resource' is correct.
-verifyResource :: Resource -> Bool
-verifyResource  = undefined
+verifyResource :: Resource -> Either String ()
+verifyResource Resource{..} =
+  unless (resourceCsum == MD5.hash resourceData) $
+    Left $ "checksum mismatch for " <> show resourceName
 
 -- | A 'Preset' represents a Krita brush preset.
 data Preset = Preset { presetName        :: !T.Text
@@ -285,7 +300,7 @@ resources cursor = do
   resourceName <- attribute "name" cursor
   resourceType <- attribute "type" cursor
   resourceFile <- attribute "filename" cursor
-  resourceCsum <- attribute "md5sum" cursor
+  resourceCsum <- rights $ fromHex <$> attribute "md5sum" cursor
   resourceData <- descendant cursor >>= content >>= decodeBinary
 
   return (resourceName, Resource{..})
@@ -366,3 +381,7 @@ getResource name = Map.lookup name . embeddedResources
 -- This is different from changing the filename of a preset.
 setPresetName :: Preset -> T.Text -> Preset
 setPresetName preset name = preset { presetName = name }
+
+-- | Verify the integrity of embedded resources.
+validateChecksums :: Preset -> Either String ()
+validateChecksums = mapM_ verifyResource . embeddedResources

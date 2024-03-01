@@ -331,6 +331,12 @@ decodeKPP bytes = do
     getPaintop = toEither "missing preset paintopid" . attributeText "paintopid"
     parseSettings = first show . parseText def
 
+readKPP :: FilePath -> IO (Either String Preset)
+readKPP = liftA decodeKPP . BS.readFile
+
+writeKPP :: FilePath -> Preset -> IO ()
+writeKPP path = either fail (BL.writeFile path) . encodeKPP
+
 -- | Encode a 'Preset' as binary PNG data.
 encodeKPP :: Preset -> Either String BL.ByteString
 encodeKPP preset@Preset{presetIcon = (icon, meta)} =

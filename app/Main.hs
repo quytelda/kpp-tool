@@ -38,80 +38,59 @@ param = strOption
 inputFile :: Parser FilePath
 inputFile = argument str (metavar "FILE")
 
--- | Runtime Operations
-data Operation = OpShow -- ^ Display a summary of information about a
-                        -- preset.
-               | OpVerify
-               | OpParams  [String]
-               | OpExtract String (Maybe FilePath)
-               | OpRename  String (Maybe FilePath)
-               deriving (Show)
+-- | Runtime Commands
+data Command = CmdShow
+             | CmdVerify
+             | CmdParams  [String]
+             | CmdExtract String (Maybe FilePath)
+             | CmdRename  String (Maybe FilePath)
+             deriving (Show)
 
-opShow :: Parser Operation
-opShow = flag' OpShow
-  (  long "show"
-  <> short 's'
-  <> help "Display a summary of preset settings"
-  )
+-- | Create a command subparser option that can be passed to 'subparser'.
+mkCommand :: String -> Parser Command -> String -> Mod CommandFields Command
+mkCommand name parser = command name . info (parser <**> helper) . progDesc
 
-opVerify :: Parser Operation
-opVerify = flag' OpVerify
-  (  long "verify"
-  <> short 'v'
-  <> help "Verify embedded resource checksums"
-  )
-
-opParams :: Parser Operation
-opParams = OpParams <$> many param
-
-opRename :: Parser Operation
-opRename = OpRename
-  <$> strOption (  long "rename"
-                <> short 'r'
-                <> help "Change the name of a preset"
-                )
-  <*> optional output
-
-opExtract :: Parser Operation
-opExtract = OpExtract
-  <$> strOption (  long "extract"
-                <> short 'e'
-                <> help "Extract an embedded resource file"
-                )
-  <*> optional output
-
-operation :: Parser Operation
-operation = opShow
-  <|> opVerify
-  <|> opParams
-  <|> opExtract
-  <|> opRename
+subcommand :: Parser Command
+subcommand = subparser $ mconcat
+  [ mkCommand "show"    cmdShow    "Display a summary of preset settings"
+  , mkCommand "verify"  cmdVerify  "Verify embedded resource checksums"
+  , mkCommand "rename"  cmdRename  "Change the name of a preset"
+  , mkCommand "extract" cmdExtract "Extract an embedded resource file"
+  ]
+  where
+    cmdShow    = pure CmdShow <|> cmdParams
+    cmdVerify  = pure CmdVerify
+    cmdParams  = CmdParams  <$> many param
+    cmdRename  = CmdRename  <$> argument str (metavar "NAME")
+                            <*> optional output
+    cmdExtract = CmdExtract <$> argument str (metavar "NAME")
+                            <*> optional output
 
 -- | 'Options' represents a selection of runtime configuration
 -- options and arguments.
 data Options = Options
-  { optOperation :: Operation
-  , optInput     :: FilePath
+  { optCommand :: Command
+  , optInput   :: FilePath
   } deriving (Show)
 
 options :: Parser Options
 options = Options
-  <$> operation
+  <$> subcommand
   <*> inputFile
   <**> helper
   <**> versioner
 
-parser :: ParserInfo Options
-parser = info options
+parserInfo :: ParserInfo Options
+parserInfo = info options
   ( fullDesc
   <> header "kpp-tool - a CLI tool for inspecting and editing KPP files"
   )
 
--- | Handler for OpShow Operations
+-- | Handler for CmdShow Commands
 runShow :: Preset -> IO ()
 runShow = TLIO.putStrLn . describe
 
--- | Handler for OpVerify Operations
+-- | Handler for CmdVerify Commands
 runVerify :: Preset -> IO ()
 runVerify = void . Map.traverseWithKey printStatus . verifyResourceChecksums
   where
@@ -120,7 +99,7 @@ runVerify = void . Map.traverseWithKey printStatus . verifyResourceChecksums
                       then "OK"
                       else "Checksum Mismatch"
 
--- | Handler for OpRename Operations
+-- | Handler for CmdRename Commands
 runRename :: String -> FilePath -> Preset -> IO ()
 runRename newName path preset = do
   bytes <- encode $ setPresetName preset newName'
@@ -131,14 +110,14 @@ runRename newName path preset = do
     newName' = T.pack newName
     encode = either fail return . encodeKPP
 
--- | Handler for OpParams Operations
+-- | Handler for CmdParams Commands
 runParams :: [String] -> Preset -> IO ()
 runParams params preset = forM_ params $ \key ->
   case getParam (T.pack key) preset of
     Nothing  -> fail $ "unrecognized parameter: " <> key
     Just val -> TLIO.putStrLn $ describe val
 
--- | Handler for OpExtract Operations
+-- | Handler for CmdExtract Commands
 runExtract :: String -> Maybe FilePath -> Preset -> IO ()
 runExtract name mpath preset =
   case getResource (T.pack name) preset of
@@ -148,7 +127,7 @@ runExtract name mpath preset =
 
 main :: IO ()
 main = do
-  opts@Options{..} <- execParser parser
+  opts@Options{..} <- execParser parserInfo
 
   -- argument debugging info
   putStrLn $ show opts
@@ -159,12 +138,12 @@ main = do
   preset   <- either fail return $ decodeKPP contents
 
   -- Run the selected operation.
-  case optOperation of
-    OpShow                 -> runShow preset
-    OpVerify               -> runVerify preset
-    OpParams params        -> runParams params preset
-    OpExtract name mpath   -> runExtract name mpath preset
-    OpRename oldName mpath -> let path = fromMaybe optInput mpath
-                              in runRename oldName path preset
+  case optCommand of
+    CmdShow                 -> runShow preset
+    CmdVerify               -> runVerify preset
+    CmdParams params        -> runParams params preset
+    CmdExtract name mpath   -> runExtract name mpath preset
+    CmdRename oldName mpath -> let path = fromMaybe optInput mpath
+                               in runRename oldName path preset
 
   return ()

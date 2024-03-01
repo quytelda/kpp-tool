@@ -1,11 +1,14 @@
-{-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE RecordWildCards   #-}
 module Main (main) where
 
 import           Control.Monad
 import qualified Data.ByteString      as BS
 import qualified Data.ByteString.Lazy as BL
+import qualified Data.Map.Strict      as Map
 import           Data.Maybe           (fromMaybe)
 import qualified Data.Text            as T
+import qualified Data.Text.IO         as TIO
 import qualified Data.Text.Lazy.IO    as TLIO
 import           Data.Version         (showVersion)
 import           Options.Applicative
@@ -38,6 +41,7 @@ inputFile = argument str (metavar "FILE")
 -- | Runtime Operations
 data Operation = OpShow -- ^ Display a summary of information about a
                         -- preset.
+               | OpVerify
                | OpParams  [String]
                | OpExtract String (Maybe FilePath)
                | OpRename  String (Maybe FilePath)
@@ -48,6 +52,13 @@ opShow = flag' OpShow
   (  long "show"
   <> short 's'
   <> help "Display a summary of preset settings"
+  )
+
+opVerify :: Parser Operation
+opVerify = flag' OpVerify
+  (  long "verify"
+  <> short 'v'
+  <> help "Verify embedded resource checksums"
   )
 
 opParams :: Parser Operation
@@ -71,6 +82,7 @@ opExtract = OpExtract
 
 operation :: Parser Operation
 operation = opShow
+  <|> opVerify
   <|> opParams
   <|> opExtract
   <|> opRename
@@ -98,6 +110,15 @@ parser = info options
 -- | Handler for OpShow Operations
 runShow :: Preset -> IO ()
 runShow = TLIO.putStrLn . describe
+
+-- | Handler for OpVerify Operations
+runVerify :: Preset -> IO ()
+runVerify = void . Map.traverseWithKey printStatus . verifyResourceChecksums
+  where
+    printStatus name match = TIO.putStrLn $
+      name <> ": " <> if match
+                      then "OK"
+                      else "Checksum Mismatch"
 
 -- | Handler for OpRename Operations
 runRename :: String -> FilePath -> Preset -> IO ()
@@ -140,6 +161,7 @@ main = do
   -- Run the selected operation.
   case optOperation of
     OpShow                 -> runShow preset
+    OpVerify               -> runVerify preset
     OpParams params        -> runParams params preset
     OpExtract name mpath   -> runExtract name mpath preset
     OpRename oldName mpath -> let path = fromMaybe optInput mpath

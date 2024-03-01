@@ -10,19 +10,20 @@ module Preset
   , verifyResource
   , decodeKPP
   , encodeKPP
+  , readKPP
+  , writeKPP
   , getSettings
   , setSettings
   , getParam
   , getResource
   , setPresetName
-  , validateChecksums
+  , verifyResourceChecksums
   ) where
 
 import           Codec.Picture
 import qualified Codec.Picture.Metadata as Meta
 import           Codec.Picture.Png      (decodePngWithMetadata)
 import           Control.Applicative
-import           Control.Monad
 import qualified Crypto.Hash.MD5        as MD5
 import           Data.Bifunctor         (first)
 import           Data.ByteString        (ByteString)
@@ -190,10 +191,8 @@ instance ToXML Resource where
     in Element{..}
 
 -- | Verify the MD5 checksum of a 'Resource' is correct.
-verifyResource :: Resource -> Either String ()
-verifyResource Resource{..} =
-  unless (resourceCsum == MD5.hash resourceData) $
-    Left $ "checksum mismatch for " <> show resourceName
+verifyResource :: Resource -> Bool
+verifyResource Resource{..} = resourceCsum == MD5.hash resourceData
 
 -- | A 'Preset' represents a Krita brush preset.
 data Preset = Preset { presetName        :: !T.Text
@@ -383,5 +382,5 @@ setPresetName :: Preset -> T.Text -> Preset
 setPresetName preset name = preset { presetName = name }
 
 -- | Verify the integrity of embedded resources.
-validateChecksums :: Preset -> Either String ()
-validateChecksums = mapM_ verifyResource . embeddedResources
+verifyResourceChecksums :: Preset -> Map.Map T.Text Bool
+verifyResourceChecksums = fmap verifyResource . embeddedResources

@@ -38,7 +38,6 @@ param = strOption
 inputFile :: Parser FilePath
 inputFile = argument str (metavar "FILE")
 
--- | Runtime Commands
 data Command = CmdShow
              | CmdVerify
              | CmdParams  [String]
@@ -66,8 +65,8 @@ subcommand = subparser $ mconcat
     cmdExtract = CmdExtract <$> argument str (metavar "NAME")
                             <*> optional output
 
--- | 'Options' represents a selection of runtime configuration
--- options and arguments.
+-- | 'Options' represents a selection of runtime configuration options
+-- and arguments.
 data Options = Options
   { optCommand :: Command
   , optInput   :: FilePath
@@ -86,11 +85,11 @@ parserInfo = info options
   <> header "kpp-tool - a CLI tool for inspecting and editing KPP files"
   )
 
--- | Handler for CmdShow Commands
+-- | Handler for "show" commands
 runShow :: Preset -> IO ()
 runShow = TLIO.putStrLn . describe
 
--- | Handler for CmdVerify Commands
+-- | Handler for "verify" commands
 runVerify :: Preset -> IO ()
 runVerify = void . Map.traverseWithKey printStatus . verifyResourceChecksums
   where
@@ -99,7 +98,7 @@ runVerify = void . Map.traverseWithKey printStatus . verifyResourceChecksums
                       then "OK"
                       else "Checksum Mismatch"
 
--- | Handler for CmdRename Commands
+-- | Handler for "rename" commands
 runRename :: String -> FilePath -> Preset -> IO ()
 runRename newName path preset = do
   bytes <- encode $ setPresetName preset newName'
@@ -110,14 +109,14 @@ runRename newName path preset = do
     newName' = T.pack newName
     encode = either fail return . encodeKPP
 
--- | Handler for CmdParams Commands
+-- | Handler for "show" commands with one or more '--param' options
 runParams :: [String] -> Preset -> IO ()
 runParams params preset = forM_ params $ \key ->
   case getParam (T.pack key) preset of
     Nothing  -> fail $ "unrecognized parameter: " <> key
     Just val -> TLIO.putStrLn $ describe val
 
--- | Handler for CmdExtract Commands
+-- | Handler for "extract" commands
 runExtract :: String -> Maybe FilePath -> Preset -> IO ()
 runExtract name mpath preset =
   case getResource (T.pack name) preset of
@@ -127,13 +126,9 @@ runExtract name mpath preset =
 
 main :: IO ()
 main = do
-  opts@Options{..} <- execParser parserInfo
+  Options{..} <- execParser parserInfo
 
-  -- argument debugging info
-  putStrLn $ show opts
-  putStrLn $ replicate 80 '-'
-
-  -- load input file
+  -- Load the input file.
   contents <- BS.readFile optInput
   preset   <- either fail return $ decodeKPP contents
 
@@ -145,5 +140,3 @@ main = do
     CmdExtract name mpath   -> runExtract name mpath preset
     CmdRename oldName mpath -> let path = fromMaybe optInput mpath
                                in runRename oldName path preset
-
-  return ()

@@ -1,392 +1,434 @@
-{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE LambdaCase        #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards   #-}
 
-module Preset
-  ( version
-  , Param(..)
-  , Preset(..)
-  , Resource(..)
-  , verifyResource
-  , decodeKPP
-  , encodeKPP
-  , readKPP
-  , writeKPP
-  , getSettings
-  , setSettings
-  , getParam
-  , getResource
-  , setPresetName
-  , verifyResourceChecksums
-  ) where
+module Preset where
 
-import           Codec.Picture
-import qualified Codec.Picture.Metadata as Meta
-import           Codec.Picture.Png      (decodePngWithMetadata)
+import           Codec.Compression.Zlib
 import           Control.Applicative
+import           Control.Monad
 import qualified Crypto.Hash.MD5        as MD5
 import           Data.Bifunctor         (first)
-import           Data.ByteString        (ByteString)
+import           Data.Binary
+import           Data.Binary.Get
+import           Data.Binary.Put
 import qualified Data.ByteString        as BS
 import qualified Data.ByteString.Base16 as Base16
-import           Data.ByteString.Base64
+import qualified Data.ByteString.Base64 as Base64
+import           Data.ByteString.Lazy   (ByteString)
 import qualified Data.ByteString.Lazy   as BL
-import           Data.Either
-import           Data.Foldable          (toList)
-import           Data.Map.Strict        (Map)
+import           Data.Digest.CRC32
+import           Data.Foldable
 import qualified Data.Map.Strict        as Map
-import           Data.String
+import           Data.Text              (Text)
 import qualified Data.Text              as T
 import           Data.Text.Encoding
-import qualified Data.Text.Lazy         as TL
-import qualified Data.Text.Lazy.Builder as TLB
-import           Data.Text.Read         (decimal)
+import qualified Data.Text.Read         as Read
+import           Prettyprinter
 import           Text.XML
-import           Text.XML.Cursor
 
-import           Describe
-import           Paths_kpp_tool         (version)
-import           ToXML
+-----------------------------
+-- PNG Parsing & Rendering --
+-----------------------------
 
--- | 'show_' is a generalized version of 'show' that can generate 'IsString' instances.
-show_ :: (IsString c, Show a) => a -> c
-show_ = fromString . show
+getNull :: Get ()
+getNull = do
+  b <- getWord8
+  guard $ b == 0
 
--- | Show a 'ByteString' using hexidecimal notation.
-toHex :: ByteString -> T.Text
-toHex = decodeASCII . Base16.encode
+putNull :: Put
+putNull = putWord8 0
 
--- | Parse a hexidecimal number into a binary 'ByteString'.
-fromHex :: T.Text -> Either String ByteString
-fromHex = Base16.decode . encodeUtf8
+expect :: ByteString -> Get ()
+expect expected = do
+  actual <- getLazyByteString $ BL.length expected
+  guard $ actual == expected
 
--- | Format 'ByteString' data for display purposes; long values are
--- abbreviated.
-showBinary :: (Semigroup s, IsString s) => ByteString -> s
-showBinary bytes
-  | size <= maxlen = show_ bytes
-  | otherwise      = show_ preview
-                     <> "... ("
-                     <> show_ size
-                     <> " bytes)"
-    where
-      size    = BS.length bytes
-      maxlen  = 16
-      preview = BS.take maxlen bytes
+pngMagicString :: ByteString
+pngMagicString = "\x89\x50\x4E\x47\x0D\x0A\x1A\x0A"
 
-toEither :: Foldable t => a -> t b -> Either a b
-toEither = foldr (const . Right) . Left
+getMagicString :: Get ()
+getMagicString = expect pngMagicString
 
--- | Equivalent to @attributeText@ from @Text.XML.Types@ for xml-conduit
-attributeText :: Name -> Element -> Maybe T.Text
-attributeText name = Map.lookup name . elementAttributes
+putMagicString :: Put
+putMagicString = putLazyByteString pngMagicString
 
--- | Decode binary data encoded as base64 text.
-decodeBinary :: T.Text -> [ByteString]
-decodeBinary = toList . decodeBase64 . encodeUtf8
+getChunk :: Get ByteString
+getChunk = do
+  chunkLength <- getWord32be
+  chunkData   <- getLazyByteString $ fromIntegral (4 + chunkLength)
+  chunkCsum   <- getWord32be
 
--- | Parse an 'Int' value from a 'T.Text' representation.
+  if chunkCsum == crc32 chunkData
+    then return chunkData
+    else fail "checksum mismatch"
+
+putChunk :: ByteString -> Put
+putChunk chunkData = do
+  putWord32be chunkLength
+  putLazyByteString chunkData
+  putWord32be chunkCsum
+  where
+    chunkLength = fromIntegral $ BL.length chunkData - 4
+    chunkCsum   = crc32 chunkData
+
+getTextChunk :: ByteString -> Get ByteString
+getTextChunk key = do
+  expect "tEXt"
+  expect key *> getNull
+  getRemainingLazyByteString
+
+putTextChunk :: ByteString -> ByteString -> Put
+putTextChunk key value = do
+  putLazyByteString "tEXt"
+  putLazyByteString key *> putNull
+  putLazyByteString value
+
+getZtxtChunk :: ByteString -> Get ByteString
+getZtxtChunk keyword = do
+  expect "zTXt"
+  expect keyword *> getNull
+  void getWord8 -- compression type is always 0
+  decompress <$> getRemainingLazyByteString
+
+putZtxtChunk :: ByteString -> ByteString -> Put
+putZtxtChunk key value = do
+  putLazyByteString "zTXt"
+  putLazyByteString key *> putNull
+  putWord8 0 -- compression type is always 0
+  putLazyByteString $ compress value
+
+getItxtChunk :: ByteString -> Get ByteString
+getItxtChunk keyword = do
+  expect "iTXt"
+  expect keyword *> getNull
+  compressed <- get :: Get Bool
+  void getWord8 -- compression type is always 0
+  void getLazyByteStringNul -- ignore language tag
+  void getLazyByteStringNul -- ignore translated keyword
+  content <- getRemainingLazyByteString
+
+  return $ if compressed
+           then decompress content
+           else content
+
+getKeywordChunk :: ByteString -> Get ByteString
+getKeywordChunk key = getTextChunk key <|>
+                      getZtxtChunk key <|>
+                      getItxtChunk key
+
+getVersionChunk :: Get BS.ByteString
+getVersionChunk = BS.toStrict <$> getKeywordChunk "version"
+
+putVersionChunk :: BS.ByteString -> Put
+putVersionChunk = putTextChunk "version" . BS.fromStrict
+
+getSettingChunk :: Get ByteString
+getSettingChunk = getKeywordChunk "preset"
+
+putSettingChunk :: PresetSettings -> Put
+putSettingChunk settings =
+  let documentPrologue = Prologue [] Nothing []
+      documentEpilogue = []
+      documentRoot     = renderXmlPreset settings
+      renderSettings   = def { rsUseCDATA = const True }
+      xml              = renderLBS renderSettings Document{..}
+  in putZtxtChunk "preset" xml
+
+-- | Separate documents using a line break.
+(<\>) :: Doc ann -> Doc ann -> Doc ann
+x <\> y = x <> line <> y
+
+-- | Seperate documents using two line breaks.
+(<\\>) :: Doc ann -> Doc ann -> Doc ann
+x <\\> y = x <> line <> line <> y
+
+data Preset = Preset
+  { presetVersion  :: !BS.ByteString
+  , presetSettings :: !PresetSettings
+  , presetIcon     :: ![ByteString]
+  } deriving (Show)
+
+presetName :: Preset -> Text
+presetName = settingName . presetSettings
+
+presetPaintop :: Preset -> Text
+presetPaintop = settingPaintop . presetSettings
+
+presetParams :: Preset -> [Param]
+presetParams = settingParams . presetSettings
+
+embeddedResources :: Preset -> [Resource]
+embeddedResources = settingResources . presetSettings
+
+prettyParams :: Preset -> Doc ann
+prettyParams = vsep . fmap pretty . presetParams
+
+prettyResources :: Preset -> Doc ann
+prettyResources = concatWith (<\\>) . fmap pretty . embeddedResources
+
+instance Pretty Preset where
+  pretty preset = vsep [ "name:"    <+> pretty  (presetName    preset)
+                       , "version:" <+> viaShow (presetVersion preset)
+                       , "paintop:" <+> pretty  (presetPaintop preset)
+                       -- TODO: Add metadata about icon image.
+                       ]
+                  <\\> nest 2 ("Parameters:" <\> prettyParams    preset)
+                  <\\> nest 2 ("Resources:"  <\> prettyResources preset)
+
+makePreset :: BS.ByteString -> ByteString -> [ByteString] -> Either String Preset
+makePreset version xml pngChunks = do
+  let presetVersion  = version
+      presetIcon     = pngChunks
+
+  settingsDoc    <- first show $ parseLBS def xml
+  presetSettings <- parseXmlPreset $ documentRoot settingsDoc
+
+  return Preset{..}
+
+getPreset :: Get Preset
+getPreset = do
+  getMagicString
+  chunks <- many getChunk
+
+  case foldr addChunk ([],[],[]) chunks of
+    ([version], [settings], chunks') -> either fail pure $ makePreset version settings chunks'
+    ([]       , _         , _      ) -> fail "missing preset version chunk"
+    (_        , []        , _      ) -> fail "missing preset settings chunk"
+    _                                -> fail "duplicated metadata chunks"
+  where
+    slot1 a (xs, ys, zs) = (a:xs,   ys,   zs)
+    slot2 a (xs, ys, zs) = (  xs, a:ys,   zs)
+    slot3 a (xs, ys, zs) = (  xs,   ys, a:zs)
+    addChunk chunk = flip runGet chunk $
+      slot1 <$> getVersionChunk <|>
+      slot2 <$> getSettingChunk <|>
+      slot3 <$> pure chunk
+
+putPreset :: Preset -> Put
+putPreset Preset{..} = do
+  -- The metadata elements must be inserted after the IHDR chunk.
+  -- Krita inserts the elements after the IHDR and pHYs chunks, but
+  -- before the IDAT chunks, so this code matches the behavior.
+  let isFollower bs = BL.isPrefixOf "IDAT" bs || BL.isPrefixOf "IEND" bs
+      (pre, post) = break isFollower presetIcon
+      versionChunk = runPut $ putVersionChunk presetVersion
+      settingChunk = runPut $ putSettingChunk presetSettings
+
+  putMagicString
+  traverse_ putChunk pre
+  putChunk settingChunk
+  putChunk versionChunk
+  traverse_ putChunk post
+
+-----------------------------
+-- XML Parsing & Rendering --
+-----------------------------
+
+encodeBase16 :: BS.ByteString -> Text
+encodeBase16 = decodeUtf8 . Base16.encode
+
+decodeBase16 :: Text -> Either String BS.ByteString
+decodeBase16 = Base16.decode . encodeUtf8
+
+encodeBase64 :: BS.ByteString -> Text
+encodeBase64 = decodeUtf8 . Base64.encode
+
+decodeBase64 :: Text -> Either String BS.ByteString
+decodeBase64 t =
+  -- Krita presets sometimes contain binary data which is
+  -- base64-encoded twice. I don't know if that is intentional or a
+  -- bug since there is no obvious pattern to which data is double
+  -- encoded. Therefore, we try base64-decoding all encoded data twice
+  -- if possible.
+  let bs1 = Base64.decode $ encodeUtf8 t
+      bs2 = Base64.decode =<< bs1
+  in bs2 <> bs1
+
+decodeInt :: Text -> Either String Int
+decodeInt t = case Read.decimal t of
+    Right (n, "") -> Right n
+    _             -> Left "input contains non-decimal digits"
+
+attributeText :: Name -> Element -> Either String Text
+attributeText name Element{..} =
+  case Map.lookup name elementAttributes of
+    Just v  -> Right v
+    Nothing -> Left $ "missing attribute: " <> (show $ nameLocalName name)
+
+contentText :: Element -> Either String Text
+contentText (Element _ _ nodes) =
+  case [text | NodeContent text <- nodes] of
+    [] -> Left "element has no text content"
+    ts -> Right $ T.concat ts
+
+-- | Select the element children of a given `Element`.
+childElements :: Element -> [Element]
+childElements e = do
+  NodeElement child <- elementNodes e
+  return child
+
+isPngData :: BS.ByteString -> Bool
+isPngData bs = BS.toStrict pngMagicString `BS.isPrefixOf` bs
+
+-- | Pretty printer for arbitrary blobs of binary data.
 --
--- The text must contain only the digits 0-9 with no whitespace.
-parseInt :: Alternative f => T.Text -> f Int
-parseInt text = case decimal text of
-  Right (n, "") -> pure n
-  _             -> empty
+-- Small blobs are displayed normally (using show).
+-- If the blob contains a PNG image, display "[PNG Image (<size> bytes)]"
+-- Otherwise, display "[Binary Data (<size> bytes)]"
+prettyByteData :: BS.ByteString -> Doc ann
+prettyByteData bytes
+  | size <= maxlen = viaShow bytes
+  | otherwise      = description <+> parens (pretty size <+> "bytes")
+  where
+    maxlen      = 32
+    size        = BS.length bytes
+    description = if isPngData bytes
+                  then "PNG Image"
+                  else "Binary Data"
 
--- | Encode a DynamicImage as a PNG with provided metadata (if possible).
+-- | `ParamValue` represents the value of a preset parameter.
 --
--- JuicyPixels doesn't currently provide a function to encode a
--- 'DynamicImage' with metadata information.
-encodeDynamicPngWithMetadata :: Meta.Metadatas -> DynamicImage -> Either String BL.ByteString
-encodeDynamicPngWithMetadata meta (ImageRGB8   img) = Right $ encodePngWithMetadata meta img
-encodeDynamicPngWithMetadata meta (ImageRGBA8  img) = Right $ encodePngWithMetadata meta img
-encodeDynamicPngWithMetadata meta (ImageRGB16  img) = Right $ encodePngWithMetadata meta img
-encodeDynamicPngWithMetadata meta (ImageRGBA16 img) = Right $ encodePngWithMetadata meta img
-encodeDynamicPngWithMetadata meta (ImageY8     img) = Right $ encodePngWithMetadata meta img
-encodeDynamicPngWithMetadata meta (ImageY16    img) = Right $ encodePngWithMetadata meta img
-encodeDynamicPngWithMetadata meta (ImageYA8    img) = Right $ encodePngWithMetadata meta img
-encodeDynamicPngWithMetadata meta (ImageYA16   img) = Right $ encodePngWithMetadata meta img
-encodeDynamicPngWithMetadata _    _                 = Left "Unsupported image format for PNG export"
+-- Parameter values have an associated type which can be:
+--   * "string" (for textual data)
+--   * "internal" (no specific QVariant wrapper)
+--   * "bytearray" (for binary data encoded in base64)
+data ParamValue = String   !Text
+                | Internal !Text
+                | Binary   !BS.ByteString
+                deriving (Show)
 
--- | A 'Param' represents the value of a preset parameter.
---
--- Parameter values have a type which can be either "string" (for
--- textual data) or "bytearray" (for binary data encoded in base64).
-data Param = String !T.Text
-           | Binary !ByteString
+instance Pretty ParamValue where
+  pretty (String   val) = dquotes  (pretty val)
+  pretty (Internal val) = squotes  (pretty val)
+  pretty (Binary   val) = brackets (prettyByteData val)
 
--- | Binary parameters are often quite long, so this custom 'Show'
--- instance truncates the displayed 'ByteString' if the input is too
--- long.
-instance Show Param where
-  show (String text)  = "String " <> show text
-  show (Binary bytes) = "Binary " <> showBinary bytes
+-- | A 'Param' represents a preset parameter with a name and value.
+data Param = Param
+  { paramName  :: !Text
+  , paramValue :: !ParamValue
+  } deriving (Show)
 
-instance Describe Param where
-  describe (String text)  = TL.fromStrict text
-  describe (Binary bytes) = showBinary bytes
+instance Pretty Param where
+  pretty (Param key val) = pretty key <> ":" <+> pretty val
 
-instance Describe (Map T.Text Param) where
-  describeLines = concat . Map.mapWithKey describeParam
-    where
-      describeParam name (String text)  = [TLB.fromText name <> ": " <> TLB.fromText text]
-      describeParam name (Binary bytes) = [TLB.fromText name <> ": " <> showBinary bytes]
+parseXmlParam :: Element -> Either String Param
+parseXmlParam e@(Element "param" _ _) = do
+  paramName <- attributeText "name" e
+  paramType <- attributeText "type" e
+  paramData <- contentText e
 
--- | Helper function to construct @<param>@ elements.
-paramElement :: T.Text -> T.Text -> T.Text -> Element
-paramElement paramName paramType paramData =
-  let elementName       = "param"
+  paramValue <- case paramType of
+    "string"    -> String   <$> pure         paramData
+    "internal"  -> Internal <$> pure         paramData
+    "bytearray" -> Binary   <$> decodeBase64 paramData
+    _           -> Left $ "unknown param type: " <> show paramType
+  return Param{..}
+parseXmlParam _ = Left "expected <param> element"
+
+renderXmlParam :: Param -> Element
+renderXmlParam Param{..} =
+  let (paramType, paramData) = case paramValue of
+        String   val -> ("string",    val)
+        Internal val -> ("internal",  val)
+        Binary   val -> ("bytearray", encodeBase16 val)
+      elementName       = "param"
       elementNodes      = [NodeContent paramData]
       elementAttributes = Map.fromList [ ("name", paramName)
                                        , ("type", paramType)
                                        ]
   in Element{..}
 
-instance ToXML (T.Text, Param) where
-  toElement (paramName, String text)  = paramElement paramName "string" text
-  toElement (paramName, Binary bytes) = paramElement paramName "bytearray" $ encodeBase64 bytes
-
 -- | 'Resource' is a type for embedded resources.
-data Resource = Resource { resourceName :: !T.Text
-                         , resourceFile :: !T.Text
-                         , resourceType :: !T.Text
-                         , resourceCsum :: !ByteString
-                         , resourceData :: !ByteString
-                         }
+data Resource = Resource { resourceName :: !Text
+                         , resourceFile :: !Text
+                         , resourceType :: !Text
+                         , resourceData :: !BS.ByteString
+                         } deriving (Show)
 
--- | 'Resource' records usually contain really long binary strings, so
--- we provide a custom instance for 'Show' that abbreviates the output.
-instance Show Resource where
-  show Resource{..} =
-    unwords [ "Resource"
-            , show resourceName
-            , show resourceFile
-            , show resourceType
-            , show $ toHex resourceCsum
-            , showBinary resourceData
-            ]
-
-instance Describe Resource where
-  describeLines Resource{..} =
-    [ "Name: " <> TLB.fromText resourceName
-    , "Path: " <> TLB.fromText resourceFile
-    , "Type: " <> TLB.fromText resourceType
-    , "MD5: "  <> TLB.fromText (toHex resourceCsum)
-    , "Data: " <> showBinary resourceData
-    ]
-
--- | Render a 'Resource' into an XML element.
---
--- Since 'Resource's contains base64-encoded binary data, the
--- resulting element content can be fairly large.
-instance ToXML Resource where
-  toElement Resource{..} =
-    let elementName       = "resource"
-        elementNodes      = [NodeContent $ encodeBase64 resourceData]
-        elementAttributes = Map.fromList [ ("name",     resourceName)
-                                         , ("filename", resourceFile)
-                                         , ("type",     resourceType)
-                                         , ("md5sum",   toHex resourceCsum)
-                                         ]
-    in Element{..}
-
--- | Verify the MD5 checksum of a 'Resource' is correct.
-verifyResource :: Resource -> Bool
-verifyResource Resource{..} = resourceCsum == MD5.hash resourceData
-
--- | A 'Preset' represents a Krita brush preset.
-data Preset = Preset { presetName        :: !T.Text
-                     , presetPaintop     :: !T.Text
-                     , presetVersion     :: !T.Text
-                     , presetParams      :: Map T.Text Param
-                     , embeddedResources :: Map T.Text Resource
-                     , presetIcon        :: (DynamicImage, Meta.Metadatas)
-                     }
-
--- | Get the dimensions of a preset's icon.
-presetIconDims :: Preset -> (Int, Int)
-presetIconDims Preset{presetIcon = (icon, _)} =
-  let iconWidth  = dynamicMap imageWidth  icon
-      iconHeight = dynamicMap imageHeight icon
-  in (iconWidth, iconHeight)
-
--- | 'Preset' records contain image data, so we provide a custom
--- instance for 'Show' that describes images in terms of dimensions.
-instance Show Preset where
-  show preset@Preset{..} =
-    unwords [ "Preset"
-            , show presetName
-            , show presetPaintop
-            , show presetVersion
-            , show presetParams
-            , show embeddedResources
-            , "[" ++ show iconWidth ++ "x" ++ show iconHeight ++ "]"
-            ]
+instance Pretty Resource where
+  pretty Resource{..} = vsep [ "name:" <+> pretty resourceName
+                             , "file:" <+> pretty resourceFile
+                             , "type:" <+> pretty resourceType
+                             , "data:" <+> prettyByteData resourceData
+                             , "md5:"  <+> pretty resourceCsum
+                             ]
     where
-      (iconWidth, iconHeight) = presetIconDims preset
+      resourceCsum = encodeBase16 $ MD5.hash resourceData
 
-instance Describe Preset where
-  describeLines preset@Preset{..} =
-    [ "Name: "    <> TLB.fromText presetName
-    , "Type: "    <> TLB.fromText presetPaintop
-    , "Version: " <> TLB.fromText presetVersion
-    , "Icon: "    <> show_ (presetIconDims preset)
-    , "\nParameters:"
-    ]
-    <>
-    map indent paramList
-    <>
-    [ "\nResources: " ]
-    <>
-    map indent resourceList
-    where
-      indent = ("  " <>)
-      paramList    = describeLines presetParams
-      resourceList = concatMap describeLines embeddedResources
+parseXmlResource :: Element -> Either String Resource
+parseXmlResource e@(Element "resource" _ _) = do
+  resourceName <- attributeText "name"     e
+  resourceType <- attributeText "type"     e
+  resourceFile <- attributeText "filename" e
+  resourceCsum <- attributeText "md5sum"   e >>= decodeBase16
+  resourceData <- contentText              e >>= decodeBase64
 
-instance ToXML (Map T.Text Resource) where
-  -- | Generate a @<resources>@ element containing a list of
-  -- @<resource>@ elements.
-  toElement m =
-    let elementName       = "resources"
-        elementAttributes = mempty
-        elementNodes      = toNode <$> Map.elems m
-    in Element{..}
+  -- verify checksum
+  if resourceCsum == MD5.hash resourceData
+    then Right Resource{..}
+    else Left $ "checksum mismatch for resource: " <> show resourceName
+parseXmlResource _ = Left "expected <resource> element"
 
-instance ToXML Preset where
-  toElement Preset{..} =
-    let resourceCount     = show_ $ Map.size embeddedResources
-        paramElems        = toNode <$> Map.toList presetParams
-        elementName       = "Preset"
-        elementAttributes = Map.fromList [ ("name",               presetName)
-                                         , ("paintopid",          presetPaintop)
-                                         , ("embedded_resources", resourceCount)
-                                         ]
-        elementNodes      = toNode embeddedResources : paramElems
-    in Element{..}
+renderXmlResource :: Resource -> Element
+renderXmlResource Resource{..} =
+  let resourceCsum      = encodeBase16 $ MD5.hash resourceData
+      elementName       = "resource"
+      elementNodes      = [NodeContent $ encodeBase64 resourceData]
+      elementAttributes = Map.fromList [ ("name",     resourceName)
+                                       , ("filename", resourceFile)
+                                       , ("type",     resourceType)
+                                       , ("md5sum",   resourceCsum)
+                                       ]
+  in Element{..}
 
--- | Select parameter elements and parse them into a 'Param' table.
---
--- Note: I'm not sure why, but some binary data in KPP parameters
--- might be base64-encoded twice; the issue seems to apply to
--- parameter values in both versions 2.2 and 5.0, but is not
--- consistent.
-params :: Cursor -> [(T.Text, Param)]
-params cursor = do
-  paramName <- attribute "name" cursor
-  paramType <- attribute "type" cursor
-  paramData <- descendant cursor >>= content
+parseXmlResources :: Element -> Either String [Resource]
+parseXmlResources e@(Element "resources" _ _) = do
+  forM (childElements e) parseXmlResource
+parseXmlResources _ = Left "expected <resources> element"
 
-  paramValue <- case paramType of
-    "string"    -> String <$> return paramData
-    "bytearray" -> Binary <$> decodeBinary' paramData
-    _           -> mempty
+renderXmlResources :: [Resource] -> Element
+renderXmlResources rs =
+  let elementName       = "resources"
+      elementNodes      = NodeElement <$> renderXmlResource <$> rs
+      elementAttributes = Map.empty
+  in Element{..}
 
-  return (paramName, paramValue)
+data PresetSettings = PresetSettings
+  { settingName        :: !Text
+  , settingPaintop     :: !Text
+  , settingParams      :: ![Param]
+  , settingResources :: ![Resource]
+  } deriving (Show)
+
+-- | Parse a @<Preset>@ XML element, which should be the root element
+-- of the preset settings document.
+parseXmlPreset :: Element -> Either String PresetSettings
+parseXmlPreset e@(Element "Preset" _ _) = do
+  settingName    <- attributeText "name"      e
+  settingPaintop <- attributeText "paintopid" e
+  resourceCount <- attributeText "embedded_resources" e >>= decodeInt
+
+  (settingParams, settingResources) <- foldM addChild ([],[]) $ childElements e
+
+  if resourceCount == length settingResources
+    then Right PresetSettings{..}
+    else Left "resource count mismatch"
   where
-    decodeBinary' text = do
-      bin <- decodeBinary text
-      if isBase64 bin
-        then toList $ decodeBase64 bin
-        else return bin
+    addChild (xs, ys) child =
+      ((\x -> (x:xs,      ys)) <$> parseXmlParam     child) <>
+      ((\y -> (  xs, y <> ys)) <$> parseXmlResources child)
+parseXmlPreset _ = Left "expected <Preset> element"
 
--- | Select @<resource>@ elements and parse them into 'Resource'
--- records.
---
--- Any content is appropriately decoded from base64 into binary data.
-resources :: Cursor -> [(T.Text, Resource)]
-resources cursor = do
-  resourceName <- attribute "name" cursor
-  resourceType <- attribute "type" cursor
-  resourceFile <- attribute "filename" cursor
-  resourceCsum <- rights $ fromHex <$> attribute "md5sum" cursor
-  resourceData <- descendant cursor >>= content >>= decodeBinary
-
-  return (resourceName, Resource{..})
-
--- | Decode binary KPP file data (PNG data) into a 'Preset'.
-decodeKPP :: ByteString -> Either String Preset
-decodeKPP bytes = do
-  presetIcon@(_, meta) <- decodePngWithMetadata bytes
-
-  presetVersion <- getVersion meta
-  doc           <- getSettings meta >>= parseSettings
-
-  let root = documentRoot doc
-  presetName    <- getName    root
-  presetPaintop <- getPaintop root
-
-  let cursor            = fromDocument doc
-      presetParams      = Map.fromList $ cursor $/ params
-      embeddedResources = Map.fromList $ cursor $/ element "resources" &/ resources
-      resourceCount     = attributeText "embedded_resources" root >>= parseInt
-
-  case resourceCount of
-    Just n | n /= Map.size embeddedResources -> Left "embedded resource count mismatch"
-    _                                        -> return ()
-
-  return Preset{..}
-  where
-    getName    = toEither "missing preset name"      . attributeText "name"
-    getPaintop = toEither "missing preset paintopid" . attributeText "paintopid"
-    parseSettings = first show . parseText def
-
-readKPP :: FilePath -> IO (Either String Preset)
-readKPP = liftA decodeKPP . BS.readFile
-
-writeKPP :: FilePath -> Preset -> IO ()
-writeKPP path = either fail (BL.writeFile path) . encodeKPP
-
--- | Encode a 'Preset' as binary PNG data.
-encodeKPP :: Preset -> Either String BL.ByteString
-encodeKPP preset@Preset{presetIcon = (icon, meta)} =
-  let renderSettings = def { rsUseCDATA = const True }
-      xml = renderText renderSettings $ toDocument preset
-      meta' = setSettings meta xml
-  in encodeDynamicPngWithMetadata meta' icon
-
--- | This is the metadata key for looking up the preset settings XML
--- in the PNG metadata.
-presetSettingsKey :: Meta.Keys Meta.Value
-presetSettingsKey = Meta.Unknown "preset"
-
--- | This is the version key for looking up the preset version.
-presetVersionKey :: Meta.Keys Meta.Value
-presetVersionKey = Meta.Unknown "version"
-
--- | Locate the preset version from the PNG metadata table.
-getVersion :: Meta.Metadatas -> Either String T.Text
-getVersion meta =
-  case Meta.lookup presetVersionKey meta of
-    Just (Meta.String s) -> Right (T.pack s)
-    _                    -> Left "missing or invalid preset version"
-
--- | Locate the preset settings from the PNG metadata table.
-getSettings :: Meta.Metadatas -> Either String TL.Text
-getSettings meta =
-  case Meta.lookup presetSettingsKey meta of
-    Just (Meta.String s) -> Right (TL.pack s)
-    _                    -> Left "Missing or invalid preset metadata"
-
--- | Insert preset settings XML into a PNG metadata table.
-setSettings :: Meta.Metadatas -> TL.Text -> Meta.Metadatas
-setSettings meta xml = Meta.insert presetSettingsKey value meta
-  where value = Meta.String $ TL.unpack xml
-
--- | Lookup the value of a preset parameter.
-getParam :: T.Text -> Preset -> Maybe Param
-getParam key = Map.lookup key . presetParams
-
--- | Lookup an embedded resource by name in a preset's settings.
-getResource :: T.Text -> Preset -> Maybe Resource
-getResource name = Map.lookup name . embeddedResources
-
--- | Change the name of a preset, which is stored in the settings.
---
--- This is different from changing the filename of a preset.
-setPresetName :: Preset -> T.Text -> Preset
-setPresetName preset name = preset { presetName = name }
-
--- | Verify the integrity of embedded resources.
-verifyResourceChecksums :: Preset -> Map.Map T.Text Bool
-verifyResourceChecksums = fmap verifyResource . embeddedResources
+renderXmlPreset :: PresetSettings -> Element
+renderXmlPreset PresetSettings{..} =
+  let paramNodes        = NodeElement <$> renderXmlParam <$> settingParams
+      resourcesNode     = NodeElement $ renderXmlResources settingResources
+      resourceCount     = T.pack $ show $ length settingResources
+      elementName       = "Param"
+      elementNodes      = resourcesNode : paramNodes
+      elementAttributes = Map.fromList [ ("name",      settingName)
+                                       , ("paintopid", settingPaintop)
+                                       , ("embedded_resources", resourceCount)
+                                       ]
+  in Element{..}

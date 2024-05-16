@@ -21,15 +21,17 @@ description:         Please see the README on GitHub at <https://github.com/quyt
 
 dependencies:
 - base >= 4.7 && < 5
-- text >= 2.0 && < 3
 - base16-bytestring >= 1.0 && < 2
-- base64 >= 0.4.2 && < 2.0
+- base64-bytestring >= 1.2 && < 2
+- binary >= 0.8 && < 1
 - bytestring >= 0.11
 - containers >= 0.6
 - cryptohash-md5 >= 0.11.100
-- JuicyPixels >= 3.3 && < 4
-- optparse-applicative >= 0.18
+- digest >= 0.0.1.7
+- prettyprinter >= 1.7 && < 2
+- text >= 2.0 && < 3
 - xml-conduit >= 1.9 && < 2
+- zlib > 0.6 && < 1
 
 ghc-options:
 - -Wall

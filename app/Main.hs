@@ -7,6 +7,7 @@ import           Data.Binary
 import qualified Data.ByteString           as BS
 import qualified Data.ByteString.Lazy      as BL
 import           Data.Functor
+import           Data.Maybe                (listToMaybe)
 import qualified Data.Text                 as T
 import qualified Data.Text.IO              as TIO
 import           Prettyprinter
@@ -87,8 +88,8 @@ compose = foldr1 (>=>)
 data Config = Config
   { configHelp    :: Bool
   , configVersion :: Bool
-  , configSource  :: IO BL.ByteString
-  , configSink    :: BL.ByteString -> IO ()
+  , configInput   :: Maybe FilePath
+  , configOutput  :: Maybe FilePath
   , configActions :: [Action]
   }
 
@@ -96,7 +97,10 @@ addAction :: Action -> Config -> Config
 addAction action config@Config{..} = config { configActions = action : configActions }
 
 addFileSink :: FilePath -> Config -> Config
-addFileSink path config = config {configSink = BL.writeFile path}
+addFileSink path config = config {configOutput = Just path}
+
+setInput :: FilePath -> Config -> Config
+setInput path config = config {configInput = Just path}
 
 options :: [OptDescr (Config -> Config)]
 options = [ Option "h" ["help"]
@@ -108,6 +112,9 @@ options = [ Option "h" ["help"]
           , Option "o" ["output"]
             (ReqArg addFileSink "FILE")
             "Write preset data to FILE"
+          , Option "i" ["in-place"]
+            (NoArg $ \c -> c {configOutput = configInput c})
+            "Modify a preset file in-place."
 
           -- Actions
           , Option "s" ["show"]
@@ -131,22 +138,21 @@ defaults :: Config
 defaults = Config
   { configHelp    = False
   , configVersion = False
-  , configSource  = BL.getContents
-  , configSink    = discard
+  , configInput   = Nothing
+  , configOutput  = Nothing
   , configActions = []
   }
 
 main :: IO ()
 main = do
-  (actions, args, errs) <- getOpt RequireOrder options <$> getArgs
+  (flags, args, errs) <- getOpt RequireOrder options <$> getArgs
 
   unless (null errs) $ do
     hPutStr stderr $ unlines errs
     exitFailure
 
-  let setInput []       c = c
-      setInput (path:_) c = c { configSource = BL.readFile path }
-      Config{..} = foldl (.) (setInput args) actions defaults
+  let mpath      = listToMaybe args
+      Config{..} = foldr (.) (maybe id setInput mpath) flags defaults
 
   when configHelp $ do
     putStrLn $ usageInfo "kpp-tool" options
@@ -156,8 +162,11 @@ main = do
     putStrLn "not implemented yet"
     exitSuccess
 
-  configSource
+  let source = maybe BL.getContents BL.readFile  configInput
+      sink   = maybe discard        BL.writeFile configOutput
+
+  source
     >>= decoder
     >>= compose configActions
     >>= encoder
-    >>= configSink
+    >>= sink

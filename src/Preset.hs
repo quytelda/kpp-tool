@@ -2,7 +2,16 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards   #-}
 
-module Preset where
+module Preset
+  ( Preset(..)
+  , presetName
+  , presetPaintop
+  , presetParams
+  , embeddedResources
+  , Param(..)
+  , ParamValue(..)
+  , Resource(..)
+  ) where
 
 import           Codec.Compression.Zlib
 import           Control.Applicative

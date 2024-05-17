@@ -2,7 +2,9 @@
 {-# LANGUAGE RecordWildCards   #-}
 module Main where
 
+import           Control.Applicative
 import           Data.Functor
+import qualified Data.Text.IO              as TIO
 import           Prettyprinter
 import           Prettyprinter.Render.Text
 
@@ -26,6 +28,27 @@ discard = const $ pure ()
 
 showPreset :: Action
 showPreset preset = putDoc (pretty preset) *> putChar '\n' $> preset
+
+getName :: Action
+getName preset = TIO.putStrLn (presetName preset) $> preset
+
+setName :: Action
+setName = undefined
+
+getParam :: String -> Action
+getParam = undefined
+
+setParam :: String -> String -> Action
+setParam = undefined
+
+extract :: String -> Action
+extract = undefined
+
+insert :: FilePath -> Action
+insert = undefined
+
+extractAll :: Action
+extractAll = undefined
 
 main :: IO ()
 main = putStrLn "Not implemented yet."

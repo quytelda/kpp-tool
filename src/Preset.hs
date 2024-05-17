@@ -185,6 +185,10 @@ instance Pretty Preset where
                   <\\> nest 2 ("Parameters:" <\> prettyParams    preset)
                   <\\> nest 2 ("Resources:"  <\> prettyResources preset)
 
+instance Binary Preset where
+  get = getPreset
+  put = putPreset
+
 makePreset :: BS.ByteString -> ByteString -> [ByteString] -> Either String Preset
 makePreset version xml pngChunks = do
   let presetVersion  = version

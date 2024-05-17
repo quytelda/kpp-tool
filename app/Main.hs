@@ -2,8 +2,10 @@
 {-# LANGUAGE RecordWildCards   #-}
 module Main where
 
-import           Control.Applicative
+import qualified Data.ByteString           as BS
+import qualified Data.ByteString.Lazy      as BL
 import           Data.Functor
+import qualified Data.Text                 as T
 import qualified Data.Text.IO              as TIO
 import           Prettyprinter
 import           Prettyprinter.Render.Text
@@ -36,19 +38,30 @@ setName :: Action
 setName = undefined
 
 getParam :: String -> Action
-getParam = undefined
+getParam key preset = preset <$
+  case lookupParam (T.pack key) preset of
+    Just val -> putDoc (pretty val) *> putChar '\n'
+    Nothing  -> error $ "No such parameter: " <> key
 
 setParam :: String -> String -> Action
 setParam = undefined
 
+writeResource :: Resource -> IO ()
+writeResource Resource{..} = do
+  TIO.putStrLn $ "--> Writing resource data to: " <> resourceFile
+  BS.writeFile (T.unpack resourceFile) resourceData
+
 extract :: String -> Action
-extract = undefined
+extract name preset = preset <$
+  case lookupResource (T.pack name) preset of
+    Just res -> writeResource res
+    Nothing  -> error $ "No such resource: " <> name
 
 insert :: FilePath -> Action
 insert = undefined
 
 extractAll :: Action
-extractAll = undefined
+extractAll preset = preset <$ mapM_ writeResource (embeddedResources preset)
 
 main :: IO ()
 main = putStrLn "Not implemented yet."

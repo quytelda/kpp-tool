@@ -7,6 +7,9 @@ module Preset
   , presetName
   , presetPaintop
   , presetParams
+  , lookupParam
+  , insertParam
+  , lookupResource
   , embeddedResources
   , Param(..)
   , ParamValue(..)
@@ -28,6 +31,7 @@ import           Data.ByteString.Lazy   (ByteString)
 import qualified Data.ByteString.Lazy   as BL
 import           Data.Digest.CRC32
 import           Data.Foldable
+import           Data.List              (deleteBy)
 import qualified Data.Map.Strict        as Map
 import           Data.Text              (Text)
 import qualified Data.Text              as T
@@ -166,6 +170,25 @@ presetPaintop = settingPaintop . presetSettings
 
 presetParams :: Preset -> [Param]
 presetParams = settingParams . presetSettings
+
+-- | Look up the value of a preset parameter.
+lookupParam :: Text -> Preset -> Maybe ParamValue
+lookupParam key =
+  fmap paramValue
+  . find (\p -> key == paramName p)
+  . presetParams
+
+-- | Insert or update a preset parameter.
+insertParam :: Text -> ParamValue -> Preset -> Preset
+insertParam key val preset@Preset{..} =
+  let param = Param key val
+      PresetSettings{..} = presetSettings
+      settingParams' = param : deleteBy (\p1 p2 -> paramName p1 == paramName p2) param settingParams
+      presetSettings' = presetSettings { settingParams = settingParams' }
+  in preset { presetSettings = presetSettings' }
+
+lookupResource :: Text -> Preset -> Maybe Resource
+lookupResource name = find (\r -> name == resourceName r) . embeddedResources
 
 embeddedResources :: Preset -> [Resource]
 embeddedResources = settingResources . presetSettings
@@ -408,9 +431,9 @@ renderXmlResources rs =
   in Element{..}
 
 data PresetSettings = PresetSettings
-  { settingName        :: !Text
-  , settingPaintop     :: !Text
-  , settingParams      :: ![Param]
+  { settingName      :: !Text
+  , settingPaintop   :: !Text
+  , settingParams    :: ![Param]
   , settingResources :: ![Resource]
   } deriving (Show)
 

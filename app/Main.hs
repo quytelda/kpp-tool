@@ -37,8 +37,8 @@ showPreset preset = putDoc (pretty preset) *> putChar '\n' $> preset
 getName :: Action
 getName preset = TIO.putStrLn (presetName preset) $> preset
 
-setName :: Action
-setName = undefined
+setName :: String -> Action
+setName name = pure . setPresetName (T.pack name)
 
 getParam :: String -> Action
 getParam key preset = preset <$
@@ -123,6 +123,9 @@ options = [ Option "h" ["help"]
           , Option ""  ["get-name"]
             (NoArg $ addAction getName)
             "Get preset name"
+          , Option "" ["set-name"]
+            (ReqArg (addAction . setName) "STRING")
+            "Change a parameters metadata name."
           , Option "p" ["get-param"]
             (ReqArg (addAction . getParam) "KEY")
             "Get the value of a parameter"

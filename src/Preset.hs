@@ -10,6 +10,7 @@ module Preset
   , lookupParam
   , insertParam
   , lookupResource
+  , setPresetName
   , embeddedResources
   , Param(..)
   , ParamValue(..)
@@ -192,6 +193,10 @@ lookupResource name = find (\r -> name == resourceName r) . embeddedResources
 
 embeddedResources :: Preset -> [Resource]
 embeddedResources = settingResources . presetSettings
+
+setPresetName :: Text -> Preset -> Preset
+setPresetName name preset@Preset{..} =
+  preset { presetSettings = presetSettings { settingName = name } }
 
 prettyParams :: Preset -> Doc ann
 prettyParams = vsep . fmap pretty . presetParams

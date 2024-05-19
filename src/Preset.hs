@@ -461,7 +461,7 @@ renderXmlPreset PresetSettings{..} =
   let paramNodes        = NodeElement <$> renderXmlParam <$> settingParams
       resourcesNode     = NodeElement $ renderXmlResources settingResources
       resourceCount     = T.pack $ show $ length settingResources
-      elementName       = "Param"
+      elementName       = "Preset"
       elementNodes      = resourcesNode : paramNodes
       elementAttributes = Map.fromList [ ("name",      settingName)
                                        , ("paintopid", settingPaintop)

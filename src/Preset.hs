@@ -190,8 +190,9 @@ insertParam key val preset@Preset{..} =
       presetSettings' = presetSettings { settingParams = settingParams' }
   in preset { presetSettings = presetSettings' }
 
+-- | Look up a resource by name.
 lookupResource :: Text -> Preset -> Maybe Resource
-lookupResource name = find (\r -> name == resourceName r) . embeddedResources
+lookupResource name = Map.lookup name . embeddedResources
 
 embeddedResources :: Preset -> Map Text Resource
 embeddedResources = settingResources . presetSettings
@@ -201,7 +202,7 @@ setPresetName name preset@Preset{..} =
   preset { presetSettings = presetSettings { settingName = name } }
 
 prettyParams :: Preset -> Doc ann
-prettyParams = vsep . fmap pretty . Map.elems . presetParams
+prettyParams = concatWith (<\>) . Map.mapWithKey prettyParam . presetParams
 
 prettyResources :: Preset -> Doc ann
 prettyResources = concatWith (<\\>) . fmap pretty . embeddedResources
@@ -328,6 +329,9 @@ prettyByteData bytes
                   then "PNG Image"
                   else "Binary Data"
 
+prettyParam :: Text -> ParamValue -> Doc ann
+prettyParam key val = pretty key <> ":" <+> pretty val
+
 -- | `ParamValue` represents the value of a preset parameter.
 --
 -- Parameter values have an associated type which can be:
@@ -370,6 +374,9 @@ renderXmlParam key val =
                                        , ("type", paramType)
                                        ]
   in Element{..}
+
+renderXmlParams :: Map Text ParamValue -> [Element]
+renderXmlParams = Map.elems . Map.mapWithKey renderXmlParam
 
 -- | 'Resource' is a type for embedded resources.
 data Resource = Resource { resourceName :: !Text
@@ -456,11 +463,11 @@ parseXmlPreset _ = Left "expected <Preset> element"
 
 renderXmlPreset :: PresetSettings -> Element
 renderXmlPreset PresetSettings{..} =
-  let paramNodes        = NodeElement <$> Map.elems (Map.mapWithKey renderXmlParam settingParams)
-      resourcesNode     = NodeElement $ renderXmlResources settingResources
+  let paramNodes        = renderXmlParams    settingParams
+      resourcesNode     = renderXmlResources settingResources
       resourceCount     = T.pack $ show $ length settingResources
       elementName       = "Preset"
-      elementNodes      = resourcesNode : paramNodes
+      elementNodes      = NodeElement <$> resourcesNode : paramNodes
       elementAttributes = Map.fromList [ ("name",      settingName)
                                        , ("paintopid", settingPaintop)
                                        , ("embedded_resources", resourceCount)

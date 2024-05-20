@@ -12,7 +12,6 @@ module Preset
   , lookupResource
   , setPresetName
   , embeddedResources
-  , Param(..)
   , ParamValue(..)
   , Resource(..)
   ) where
@@ -32,7 +31,7 @@ import           Data.ByteString.Lazy   (ByteString)
 import qualified Data.ByteString.Lazy   as BL
 import           Data.Digest.CRC32
 import           Data.Foldable
-import           Data.List              (deleteBy)
+import           Data.Map.Strict        (Map)
 import qualified Data.Map.Strict        as Map
 import           Data.Text              (Text)
 import qualified Data.Text              as T
@@ -149,6 +148,10 @@ putSettingChunk settings =
       xml              = renderLBS renderSettings Document{..}
   in putZtxtChunk "preset" xml
 
+-------------------------------------------
+-- Preset (KPP file) Parsing & Rendering --
+-------------------------------------------
+
 -- | Separate documents using a line break.
 (<\>) :: Doc ann -> Doc ann -> Doc ann
 x <\> y = x <> line <> y
@@ -157,6 +160,8 @@ x <\> y = x <> line <> y
 (<\\>) :: Doc ann -> Doc ann -> Doc ann
 x <\\> y = x <> line <> line <> y
 
+-- | A `Preset` represents a Krita brush preset, including it's
+-- settings and any embedded resources.
 data Preset = Preset
   { presetVersion  :: !BS.ByteString
   , presetSettings :: !PresetSettings
@@ -169,15 +174,12 @@ presetName = settingName . presetSettings
 presetPaintop :: Preset -> Text
 presetPaintop = settingPaintop . presetSettings
 
-presetParams :: Preset -> [Param]
+presetParams :: Preset -> Map Text ParamValue
 presetParams = settingParams . presetSettings
 
 -- | Look up the value of a preset parameter.
 lookupParam :: Text -> Preset -> Maybe ParamValue
-lookupParam key =
-  fmap paramValue
-  . find (\p -> key == paramName p)
-  . presetParams
+lookupParam key = Map.lookup key . presetParams
 
 -- | Insert or update a preset parameter.
 insertParam :: Text -> ParamValue -> Preset -> Preset
@@ -191,7 +193,7 @@ insertParam key val preset@Preset{..} =
 lookupResource :: Text -> Preset -> Maybe Resource
 lookupResource name = find (\r -> name == resourceName r) . embeddedResources
 
-embeddedResources :: Preset -> [Resource]
+embeddedResources :: Preset -> Map Text Resource
 embeddedResources = settingResources . presetSettings
 
 setPresetName :: Text -> Preset -> Preset
@@ -199,7 +201,7 @@ setPresetName name preset@Preset{..} =
   preset { presetSettings = presetSettings { settingName = name } }
 
 prettyParams :: Preset -> Doc ann
-prettyParams = vsep . fmap pretty . presetParams
+prettyParams = vsep . fmap pretty . Map.elems . presetParams
 
 prettyResources :: Preset -> Doc ann
 prettyResources = concatWith (<\\>) . fmap pretty . embeddedResources
@@ -305,9 +307,7 @@ contentText (Element _ _ nodes) =
 
 -- | Select the element children of a given `Element`.
 childElements :: Element -> [Element]
-childElements e = do
-  NodeElement child <- elementNodes e
-  return child
+childElements e = [child | NodeElement child <- elementNodes e]
 
 isPngData :: BS.ByteString -> Bool
 isPngData bs = BS.toStrict pngMagicString `BS.isPrefixOf` bs
@@ -344,16 +344,7 @@ instance Pretty ParamValue where
   pretty (Internal val) = squotes  (pretty val)
   pretty (Binary   val) = brackets (prettyByteData val)
 
--- | A 'Param' represents a preset parameter with a name and value.
-data Param = Param
-  { paramName  :: !Text
-  , paramValue :: !ParamValue
-  } deriving (Show)
-
-instance Pretty Param where
-  pretty (Param key val) = pretty key <> ":" <+> pretty val
-
-parseXmlParam :: Element -> Either String Param
+parseXmlParam :: Element -> Either String (Text, ParamValue)
 parseXmlParam e@(Element "param" _ _) = do
   paramName <- attributeText "name" e
   paramType <- attributeText "type" e
@@ -364,18 +355,18 @@ parseXmlParam e@(Element "param" _ _) = do
     "internal"  -> Internal <$> pure         paramData
     "bytearray" -> Binary   <$> decodeBase64 paramData
     _           -> Left $ "unknown param type: " <> show paramType
-  return Param{..}
+  return (paramName, paramValue)
 parseXmlParam _ = Left "expected <param> element"
 
-renderXmlParam :: Param -> Element
-renderXmlParam Param{..} =
-  let (paramType, paramData) = case paramValue of
-        String   val -> ("string",    val)
-        Internal val -> ("internal",  val)
-        Binary   val -> ("bytearray", encodeBase16 val)
+renderXmlParam :: Text -> ParamValue -> Element
+renderXmlParam key val =
+  let (paramType, paramData) = case val of
+        String   v -> ("string",    v)
+        Internal v -> ("internal",  v)
+        Binary   v -> ("bytearray", encodeBase16 v)
       elementName       = "param"
       elementNodes      = [NodeContent paramData]
-      elementAttributes = Map.fromList [ ("name", paramName)
+      elementAttributes = Map.fromList [ ("name", key)
                                        , ("type", paramType)
                                        ]
   in Element{..}
@@ -423,23 +414,24 @@ renderXmlResource Resource{..} =
                                        ]
   in Element{..}
 
-parseXmlResources :: Element -> Either String [Resource]
+parseXmlResources :: Element -> Either String (Map Text Resource)
 parseXmlResources e@(Element "resources" _ _) = do
-  forM (childElements e) parseXmlResource
+  resources <- forM (childElements e) parseXmlResource
+  return $ Map.fromList $ zip (resourceName <$> resources) resources
 parseXmlResources _ = Left "expected <resources> element"
 
-renderXmlResources :: [Resource] -> Element
+renderXmlResources :: Map Text Resource -> Element
 renderXmlResources rs =
   let elementName       = "resources"
-      elementNodes      = NodeElement <$> renderXmlResource <$> rs
+      elementNodes      = NodeElement <$> renderXmlResource <$> Map.elems rs
       elementAttributes = Map.empty
   in Element{..}
 
 data PresetSettings = PresetSettings
   { settingName      :: !Text
   , settingPaintop   :: !Text
-  , settingParams    :: ![Param]
-  , settingResources :: ![Resource]
+  , settingParams    :: !(Map Text ParamValue)
+  , settingResources :: !(Map Text Resource)
   } deriving (Show)
 
 -- | Parse a @<Preset>@ XML element, which should be the root element
@@ -448,11 +440,12 @@ parseXmlPreset :: Element -> Either String PresetSettings
 parseXmlPreset e@(Element "Preset" _ _) = do
   settingName    <- attributeText "name"      e
   settingPaintop <- attributeText "paintopid" e
-  resourceCount <- attributeText "embedded_resources" e >>= decodeInt
+  resourceCount  <- attributeText "embedded_resources" e >>= decodeInt
 
-  (settingParams, settingResources) <- foldM addChild ([],[]) $ childElements e
+  (params, settingResources) <- foldM addChild (mempty, mempty) (childElements e)
+  let settingParams    = Map.fromList params
 
-  if resourceCount == length settingResources
+  if resourceCount == Map.size settingResources
     then Right PresetSettings{..}
     else Left "resource count mismatch"
   where
@@ -463,7 +456,7 @@ parseXmlPreset _ = Left "expected <Preset> element"
 
 renderXmlPreset :: PresetSettings -> Element
 renderXmlPreset PresetSettings{..} =
-  let paramNodes        = NodeElement <$> renderXmlParam <$> settingParams
+  let paramNodes        = NodeElement <$> Map.elems (Map.mapWithKey renderXmlParam settingParams)
       resourcesNode     = NodeElement $ renderXmlResources settingResources
       resourceCount     = T.pack $ show $ length settingResources
       elementName       = "Preset"

@@ -4,14 +4,10 @@
 
 module Preset
   ( Preset(..)
-  , presetName
-  , presetPaintop
-  , presetParams
   , lookupParam
   , insertParam
   , lookupResource
   , setPresetName
-  , embeddedResources
   , ParamValue(..)
   , Resource(..)
   ) where
@@ -139,11 +135,11 @@ putVersionChunk = putTextChunk "version" . BS.fromStrict
 getSettingChunk :: Get ByteString
 getSettingChunk = getKeywordChunk "preset"
 
-putSettingChunk :: PresetSettings -> Put
-putSettingChunk settings =
+putSettingChunk :: Preset -> Put
+putSettingChunk preset =
   let documentPrologue = Prologue [] Nothing []
       documentEpilogue = []
-      documentRoot     = renderXmlPreset settings
+      documentRoot     = renderXmlPreset preset
       renderSettings   = def { rsUseCDATA = const True }
       xml              = renderLBS renderSettings Document{..}
   in putZtxtChunk "preset" xml
@@ -163,43 +159,13 @@ x <\\> y = x <> line <> line <> y
 -- | A `Preset` represents a Krita brush preset, including it's
 -- settings and any embedded resources.
 data Preset = Preset
-  { presetVersion  :: !BS.ByteString
-  , presetSettings :: !PresetSettings
-  , presetIcon     :: ![ByteString]
+  { presetVersion     :: !BS.ByteString
+  , presetName        :: !Text
+  , presetPaintop     :: !Text
+  , presetParams      :: !(Map Text ParamValue)
+  , embeddedResources :: !(Map Text Resource)
+  , presetIcon        :: ![ByteString]
   } deriving (Show)
-
-presetName :: Preset -> Text
-presetName = settingName . presetSettings
-
-presetPaintop :: Preset -> Text
-presetPaintop = settingPaintop . presetSettings
-
-presetParams :: Preset -> Map Text ParamValue
-presetParams = settingParams . presetSettings
-
--- | Look up the value of a preset parameter.
-lookupParam :: Text -> Preset -> Maybe ParamValue
-lookupParam key = Map.lookup key . presetParams
-
--- | Insert or update a preset parameter.
-insertParam :: Text -> ParamValue -> Preset -> Preset
-insertParam key val preset@Preset{..} =
-  let param = Param key val
-      PresetSettings{..} = presetSettings
-      settingParams' = param : deleteBy (\p1 p2 -> paramName p1 == paramName p2) param settingParams
-      presetSettings' = presetSettings { settingParams = settingParams' }
-  in preset { presetSettings = presetSettings' }
-
--- | Look up a resource by name.
-lookupResource :: Text -> Preset -> Maybe Resource
-lookupResource name = Map.lookup name . embeddedResources
-
-embeddedResources :: Preset -> Map Text Resource
-embeddedResources = settingResources . presetSettings
-
-setPresetName :: Text -> Preset -> Preset
-setPresetName name preset@Preset{..} =
-  preset { presetSettings = presetSettings { settingName = name } }
 
 prettyParams :: Preset -> Doc ann
 prettyParams = concatWith (<\>) . Map.mapWithKey prettyParam . presetParams
@@ -220,23 +186,16 @@ instance Binary Preset where
   get = getPreset
   put = putPreset
 
-makePreset :: BS.ByteString -> ByteString -> [ByteString] -> Either String Preset
-makePreset version xml pngChunks = do
-  let presetVersion  = version
-      presetIcon     = pngChunks
-
-  settingsDoc    <- first show $ parseLBS def xml
-  presetSettings <- parseXmlPreset $ documentRoot settingsDoc
-
-  return Preset{..}
-
 getPreset :: Get Preset
 getPreset = do
   getMagicString
   chunks <- many getChunk
 
   case foldr addChunk ([],[],[]) chunks of
-    ([version], [settings], chunks') -> either fail pure $ makePreset version settings chunks'
+    ([version], [settings], chunks') -> either fail pure
+                                        $ parseXmlPreset version chunks'
+                                        $ documentRoot
+                                        $ parseLBS_ def settings
     ([]       , _         , _      ) -> fail "missing preset version chunk"
     (_        , []        , _      ) -> fail "missing preset settings chunk"
     _                                -> fail "duplicated metadata chunks"
@@ -250,14 +209,14 @@ getPreset = do
       slot3 <$> pure chunk
 
 putPreset :: Preset -> Put
-putPreset Preset{..} = do
+putPreset preset@Preset{..} = do
   -- The metadata elements must be inserted after the IHDR chunk.
   -- Krita inserts the elements after the IHDR and pHYs chunks, but
   -- before the IDAT chunks, so this code matches the behavior.
   let isFollower bs = BL.isPrefixOf "IDAT" bs || BL.isPrefixOf "IEND" bs
       (pre, post) = break isFollower presetIcon
       versionChunk = runPut $ putVersionChunk presetVersion
-      settingChunk = runPut $ putSettingChunk presetSettings
+      settingChunk = runPut $ putSettingChunk preset
 
   putMagicString
   traverse_ putChunk pre
@@ -434,42 +393,54 @@ renderXmlResources rs =
       elementAttributes = Map.empty
   in Element{..}
 
-data PresetSettings = PresetSettings
-  { settingName      :: !Text
-  , settingPaintop   :: !Text
-  , settingParams    :: !(Map Text ParamValue)
-  , settingResources :: !(Map Text Resource)
-  } deriving (Show)
-
 -- | Parse a @<Preset>@ XML element, which should be the root element
 -- of the preset settings document.
-parseXmlPreset :: Element -> Either String PresetSettings
-parseXmlPreset e@(Element "Preset" _ _) = do
-  settingName    <- attributeText "name"      e
-  settingPaintop <- attributeText "paintopid" e
-  resourceCount  <- attributeText "embedded_resources" e >>= decodeInt
+parseXmlPreset :: BS.ByteString -> [ByteString] -> Element -> Either String Preset
+parseXmlPreset presetVersion presetIcon e@(Element "Preset" _ _) = do
+  presetName    <- attributeText "name"      e
+  presetPaintop <- attributeText "paintopid" e
+  resourceCount <- attributeText "embedded_resources" e >>= decodeInt
 
-  (params, settingResources) <- foldM addChild (mempty, mempty) (childElements e)
-  let settingParams    = Map.fromList params
+  (presetParams, embeddedResources) <- first Map.fromList <$>
+    foldM addChild (mempty, mempty) (childElements e)
 
-  if resourceCount == Map.size settingResources
-    then Right PresetSettings{..}
+  if resourceCount == Map.size embeddedResources
+    then Right Preset{..}
     else Left "resource count mismatch"
   where
     addChild (xs, ys) child =
       ((\x -> (x:xs,      ys)) <$> parseXmlParam     child) <>
       ((\y -> (  xs, y <> ys)) <$> parseXmlResources child)
-parseXmlPreset _ = Left "expected <Preset> element"
+parseXmlPreset _ _ _ = Left "expected <Preset> element"
 
-renderXmlPreset :: PresetSettings -> Element
-renderXmlPreset PresetSettings{..} =
-  let paramNodes        = renderXmlParams    settingParams
-      resourcesNode     = renderXmlResources settingResources
-      resourceCount     = T.pack $ show $ length settingResources
+renderXmlPreset :: Preset -> Element
+renderXmlPreset Preset{..} =
+  let paramNodes        = renderXmlParams    presetParams
+      resourcesNode     = renderXmlResources embeddedResources
+      resourceCount     = T.pack $ show $ length embeddedResources
       elementName       = "Preset"
       elementNodes      = NodeElement <$> resourcesNode : paramNodes
-      elementAttributes = Map.fromList [ ("name",      settingName)
-                                       , ("paintopid", settingPaintop)
+      elementAttributes = Map.fromList [ ("name",      presetName)
+                                       , ("paintopid", presetPaintop)
                                        , ("embedded_resources", resourceCount)
                                        ]
   in Element{..}
+
+---------------------------
+-- Convenience Functions --
+---------------------------
+
+-- | Look up the value of a preset parameter.
+lookupParam :: Text -> Preset -> Maybe ParamValue
+lookupParam key = Map.lookup key . presetParams
+
+-- | Insert or update a preset parameter.
+insertParam :: Text -> ParamValue -> Preset -> Preset
+insertParam = undefined
+
+-- | Look up a resource by name.
+lookupResource :: Text -> Preset -> Maybe Resource
+lookupResource name = Map.lookup name . embeddedResources
+
+setPresetName :: Text -> Preset -> Preset
+setPresetName name preset = preset { presetName = name }

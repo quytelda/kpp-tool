@@ -46,8 +46,8 @@ getParam key preset = preset <$
     Just val -> putDoc (pretty val) *> putChar '\n'
     Nothing  -> error $ "No such parameter: " <> key
 
-setParam :: String -> String -> Action
-setParam = undefined
+setParam :: String -> Action
+setParam = error "Not implement yet."
 
 writeResource :: Resource -> IO ()
 writeResource Resource{..} = do
@@ -60,8 +60,8 @@ extract name preset = preset <$
     Just res -> writeResource res
     Nothing  -> error $ "No such resource: " <> name
 
-insert :: FilePath -> Action
-insert = undefined
+insert :: String -> Action
+insert = error "Not implemented yet."
 
 extractAll :: Action
 extractAll preset = preset <$ mapM_ writeResource (embeddedResources preset)
@@ -111,30 +111,36 @@ options = [ Option "h" ["help"]
             "Display version information."
           , Option "o" ["output"]
             (ReqArg addFileSink "FILE")
-            "Write preset data to FILE"
+            "Write preset data to FILE.\nOverrides -i/--in-place."
           , Option "i" ["in-place"]
             (NoArg $ \c -> c {configOutput = configInput c})
-            "Modify a preset file in-place."
+            "Modify a preset file in-place.\nOverrides -o/--output."
 
           -- Actions
           , Option "s" ["show"]
             (NoArg $ addAction showPreset)
-            "Print preset information"
+            "Print preset information."
           , Option ""  ["get-name"]
             (NoArg $ addAction getName)
-            "Get preset name"
+            "Print the preset's metadata name."
           , Option "" ["set-name"]
             (ReqArg (addAction . setName) "STRING")
-            "Change a parameters metadata name."
+            "Change a preset's metadata name."
           , Option "p" ["get-param"]
             (ReqArg (addAction . getParam) "KEY")
-            "Get the value of a parameter"
+            "Print the value of a parameter."
+          , Option "" ["set-param"]
+            (ReqArg (addAction . setParam) "KEY=VALUE")
+            "(Not Implemented) Set the value of parameter."
           , Option "e" ["extract"]
             (ReqArg (addAction . extract) "NAME")
-            "Extract an embedded resource"
+            "Extract an embedded resource."
           , Option ""  ["extract-all"]
             (NoArg $ addAction extractAll)
-            "Extract all embedded resources"
+            "Extract all embedded resources."
+          , Option "" ["insert"]
+            (ReqArg (addAction . insert) "FILE")
+            "(Not Implemented) Insert or update a resource file."
           ]
 
 defaults :: Config

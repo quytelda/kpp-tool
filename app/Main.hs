@@ -6,7 +6,6 @@ import           Control.Arrow
 import           Control.Monad
 import           Data.Binary
 import qualified Data.ByteString           as BS
-import qualified Data.ByteString.Lazy      as BL
 import           Data.Functor
 import           Data.Maybe                (listToMaybe)
 import qualified Data.Text                 as T
@@ -82,12 +81,12 @@ extractAll :: Action
 extractAll preset = preset <$ mapM_ writeResource (embeddedResources preset)
 
 -- | Helper function for decoding presets
-decoder :: Applicative f => BL.ByteString -> f Preset
-decoder = pure . decode
+decoder :: Applicative f => BS.ByteString -> f Preset
+decoder = pure . decode . BS.fromStrict
 
 -- | Helper function for encoding presets
-encoder :: Applicative f => Preset -> f BL.ByteString
-encoder = pure . encode
+encoder :: Applicative f => Preset -> f BS.ByteString
+encoder = pure . BS.toStrict . encode
 
 -- | Discard is a data sink which discards any input sent to it.
 discard :: Applicative f => a -> f ()
@@ -199,8 +198,8 @@ main = do
     putStrLn "not implemented yet"
     exitSuccess
 
-  let source = maybe BL.getContents BL.readFile  configInput
-      sink   = maybe discard        BL.writeFile configOutput
+  let source = maybe BS.getContents BS.readFile  configInput
+      sink   = maybe discard        BS.writeFile configOutput
 
   source
     >>= decoder

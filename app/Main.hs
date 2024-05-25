@@ -2,6 +2,7 @@
 {-# LANGUAGE RecordWildCards   #-}
 module Main where
 
+import           Control.Arrow
 import           Control.Monad
 import           Data.Binary
 import qualified Data.ByteString           as BS
@@ -19,7 +20,7 @@ import           System.IO
 
 import           Preset
 
--- | An `Action` is function that (possibly) modifies a preset in the
+-- | An `Action` is a function that (possibly) modifies a preset in the
 -- IO monad. For example `showPreset` prints a preset description to
 -- the console while passing the preset through unchanged. `setName`
 -- updates the name of the preset.
@@ -46,8 +47,22 @@ getParam key preset = preset <$
     Just val -> putDoc (pretty val) *> putChar '\n'
     Nothing  -> error $ "No such parameter: " <> key
 
-setParam :: String -> Action
-setParam = error "Not implement yet."
+setParamString :: String -> Action
+setParamString arg preset =
+  let (paramName, paramVal) = breakOn '=' arg
+      key = T.pack paramName
+      val = String $ T.pack paramVal
+  in pure $ insertParam key val preset
+
+setParamInternal :: String -> Action
+setParamInternal arg preset =
+  let (paramName, paramVal) = breakOn '=' arg
+      key = T.pack paramName
+      val = Internal $ T.pack paramVal
+  in pure $ insertParam key val preset
+
+setParamBinary :: String -> Action
+setParamBinary = error "Not implemented yet."
 
 writeResource :: Resource -> IO ()
 writeResource Resource{..} = do
@@ -84,6 +99,13 @@ compose = foldr1 (>=>)
 ----------------------
 -- Argument Parsing --
 ----------------------
+
+breakOn :: Eq a => a -> [a] -> ([a], [a])
+breakOn c = second (drop 1) . break (== c)
+
+commaSep :: String -> [String]
+commaSep "" = []
+commaSep xs = uncurry (:) . second commaSep . breakOn ',' $ xs
 
 data Config = Config
   { configHelp    :: Bool
@@ -129,8 +151,14 @@ options = [ Option "h" ["help"]
           , Option "p" ["get-param"]
             (ReqArg (addAction . getParam) "KEY")
             "Print the value of a parameter."
-          , Option "" ["set-param"]
-            (ReqArg (addAction . setParam) "KEY=VALUE")
+          , Option "" ["set-param-string"]
+            (ReqArg (addAction . setParamString) "KEY=VALUE")
+            "(Not Implemented) Set the value of parameter."
+          , Option "" ["set-param-internal"]
+            (ReqArg (addAction . setParamInternal) "KEY=VALUE")
+            "(Not Implemented) Set the value of parameter."
+          , Option "" ["set-param-binary"]
+            (ReqArg (addAction . setParamBinary) "KEY=VALUE")
             "(Not Implemented) Set the value of parameter."
           , Option "e" ["extract"]
             (ReqArg (addAction . extract) "NAME")

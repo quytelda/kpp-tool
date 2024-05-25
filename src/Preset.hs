@@ -436,7 +436,8 @@ lookupParam key = Map.lookup key . presetParams
 
 -- | Insert or update a preset parameter.
 insertParam :: Text -> ParamValue -> Preset -> Preset
-insertParam = undefined
+insertParam key val preset@Preset{..} =
+  preset { presetParams = Map.insert key val presetParams }
 
 -- | Look up a resource by name.
 lookupResource :: Text -> Preset -> Maybe Resource

@@ -6,6 +6,8 @@ import           Control.Arrow
 import           Control.Monad
 import           Data.Binary
 import qualified Data.ByteString           as BS
+import qualified Data.ByteString.Base64    as Base64
+import qualified Data.ByteString.Char8     as Char8
 import           Data.Functor
 import           Data.Maybe                (listToMaybe)
 import qualified Data.Text                 as T
@@ -47,19 +49,20 @@ getParam key preset = preset <$
     Nothing  -> error $ "No such parameter: " <> key
 
 setParamString :: String -> Action
-setParamString arg preset =
-  case keyEqualsValue arg of
-    Just (key, val) -> pure $ insertParam (T.pack key) (String $ T.pack val) preset
-    Nothing         -> error "expected KEY=VALUE parameter"
+setParamString arg preset = do
+  (key, val) <- keyEqualsValue arg
+  return $ insertParam (T.pack key) (String $ T.pack val) preset
 
 setParamInternal :: String -> Action
-setParamInternal arg preset =
-  case keyEqualsValue arg of
-    Just (key, val) -> pure $ insertParam (T.pack key) (Internal $ T.pack val) preset
-    Nothing         -> error "expected KEY=VALUE parameter"
+setParamInternal arg preset = do
+  (key, val) <- keyEqualsValue arg
+  return $ insertParam (T.pack key) (Internal $ T.pack val) preset
 
 setParamBinary :: String -> Action
-setParamBinary = error "Not implemented yet."
+setParamBinary arg preset = do
+  (key, encodedVal) <- keyEqualsValue arg
+  decodedVal <- either fail pure $ Base64.decode $ Char8.pack encodedVal
+  return $ insertParam (T.pack key) (Binary decodedVal) preset
 
 writeResource :: Resource -> IO ()
 writeResource Resource{..} = do
@@ -104,9 +107,9 @@ commaSep :: String -> [String]
 commaSep "" = []
 commaSep xs = uncurry (:) . second commaSep . breakOn ',' $ xs
 
-keyEqualsValue :: String -> Maybe (String, String)
-keyEqualsValue cs | '=' `elem` cs = Just $ breakOn '=' cs
-                  | otherwise     = Nothing
+keyEqualsValue :: MonadFail m => String -> m (String, String)
+keyEqualsValue cs | '=' `elem` cs = pure $ breakOn '=' cs
+                  | otherwise     = fail "expecting KEY=VALUE"
 
 data Config = Config
   { configHelp    :: Bool

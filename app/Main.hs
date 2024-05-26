@@ -46,7 +46,7 @@ getParam :: String -> Action
 getParam key preset = preset <$
   case lookupParam (T.pack key) preset of
     Just val -> putDoc (pretty val) *> putChar '\n'
-    Nothing  -> error $ "No such parameter: " <> key
+    Nothing  -> error $ "no such parameter: " <> key
 
 setParamString :: String -> Action
 setParamString arg preset = do
@@ -119,6 +119,15 @@ data Config = Config
   , configActions :: [Action]
   }
 
+defaults :: Config
+defaults = Config
+  { configHelp    = False
+  , configVersion = False
+  , configInput   = Nothing
+  , configOutput  = Nothing
+  , configActions = []
+  }
+
 addAction :: Action -> Config -> Config
 addAction action config@Config{..} = config { configActions = action : configActions }
 
@@ -130,7 +139,7 @@ setInput path config = config {configInput = Just path}
 
 options :: [OptDescr (Config -> Config)]
 options = [ Option "h" ["help"]
-            (NoArg $ \c -> c {configHelp    = True})
+            (NoArg $ \c -> c {configHelp = True})
             "Display help and usage information."
           , Option "v" ["version"]
             (NoArg $ \c -> c {configVersion = True})
@@ -146,7 +155,7 @@ options = [ Option "h" ["help"]
           , Option "s" ["show"]
             (NoArg $ addAction showPreset)
             "Print preset information."
-          , Option ""  ["get-name"]
+          , Option "" ["get-name"]
             (NoArg $ addAction getName)
             "Print the preset's metadata name."
           , Option "" ["set-name"]
@@ -167,22 +176,13 @@ options = [ Option "h" ["help"]
           , Option "e" ["extract"]
             (ReqArg (addAction . extract) "NAME")
             "Extract an embedded resource."
-          , Option ""  ["extract-all"]
+          , Option "" ["extract-all"]
             (NoArg $ addAction extractAll)
             "Extract all embedded resources."
           , Option "" ["insert"]
             (ReqArg (addAction . insert) "FILE")
             "(Not Implemented) Insert or update a resource file."
           ]
-
-defaults :: Config
-defaults = Config
-  { configHelp    = False
-  , configVersion = False
-  , configInput   = Nothing
-  , configOutput  = Nothing
-  , configActions = []
-  }
 
 main :: IO ()
 main = do

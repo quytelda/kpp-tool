@@ -4,12 +4,12 @@
 
 module Preset
   ( Preset(..)
+  , ParamValue(..)
+  , Resource(..)
   , lookupParam
   , insertParam
   , lookupResource
   , setPresetName
-  , ParamValue(..)
-  , Resource(..)
   ) where
 
 import           Codec.Compression.Zlib
@@ -210,9 +210,9 @@ getPreset = do
 
 putPreset :: Preset -> Put
 putPreset preset@Preset{..} = do
-  -- The metadata elements must be inserted after the IHDR chunk.
-  -- Krita inserts the elements after the IHDR and pHYs chunks, but
-  -- before the IDAT chunks, so this code matches the behavior.
+  -- The metadata chunks must be inserted after the IHDR chunk.
+  -- Krita inserts the elements following the IHDR and pHYs chunks,
+  -- but before the IDAT chunks, so this code matches the behavior.
   let isFollower bs = BL.isPrefixOf "IDAT" bs || BL.isPrefixOf "IEND" bs
       (pre, post) = break isFollower presetIcon
       versionChunk = runPut $ putVersionChunk presetVersion

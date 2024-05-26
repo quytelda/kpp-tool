@@ -326,7 +326,7 @@ renderXmlParam key val =
   let (paramType, paramData) = case val of
         String   v -> ("string",    v)
         Internal v -> ("internal",  v)
-        Binary   v -> ("bytearray", encodeBase16 v)
+        Binary   v -> ("bytearray", encodeBase64 v)
       elementName       = "param"
       elementNodes      = [NodeContent paramData]
       elementAttributes = Map.fromList [ ("name", key)

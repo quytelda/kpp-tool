@@ -48,17 +48,15 @@ getParam key preset = preset <$
 
 setParamString :: String -> Action
 setParamString arg preset =
-  let (paramName, paramVal) = breakOn '=' arg
-      key = T.pack paramName
-      val = String $ T.pack paramVal
-  in pure $ insertParam key val preset
+  case keyEqualsValue arg of
+    Just (key, val) -> pure $ insertParam (T.pack key) (String $ T.pack val) preset
+    Nothing         -> error "expected KEY=VALUE parameter"
 
 setParamInternal :: String -> Action
 setParamInternal arg preset =
-  let (paramName, paramVal) = breakOn '=' arg
-      key = T.pack paramName
-      val = Internal $ T.pack paramVal
-  in pure $ insertParam key val preset
+  case keyEqualsValue arg of
+    Just (key, val) -> pure $ insertParam (T.pack key) (Internal $ T.pack val) preset
+    Nothing         -> error "expected KEY=VALUE parameter"
 
 setParamBinary :: String -> Action
 setParamBinary = error "Not implemented yet."
@@ -106,6 +104,10 @@ commaSep :: String -> [String]
 commaSep "" = []
 commaSep xs = uncurry (:) . second commaSep . breakOn ',' $ xs
 
+keyEqualsValue :: String -> Maybe (String, String)
+keyEqualsValue cs | '=' `elem` cs = Just $ breakOn '=' cs
+                  | otherwise     = Nothing
+
 data Config = Config
   { configHelp    :: Bool
   , configVersion :: Bool
@@ -152,10 +154,10 @@ options = [ Option "h" ["help"]
             "Print the value of a parameter."
           , Option "" ["set-param-string"]
             (ReqArg (addAction . setParamString) "KEY=VALUE")
-            "(Not Implemented) Set the value of parameter."
+            "Set the value of parameter."
           , Option "" ["set-param-internal"]
             (ReqArg (addAction . setParamInternal) "KEY=VALUE")
-            "(Not Implemented) Set the value of parameter."
+            "Set the value of parameter."
           , Option "" ["set-param-binary"]
             (ReqArg (addAction . setParamBinary) "KEY=VALUE")
             "(Not Implemented) Set the value of parameter."

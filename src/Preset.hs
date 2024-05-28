@@ -5,6 +5,8 @@
 module Preset
   ( Preset(..)
   , presetIconDimensions
+  , prettyParams
+  , prettyResources
   , ParamValue(..)
   , Resource(..)
   , lookupParam
@@ -178,20 +180,20 @@ data Preset = Preset
 presetIconDimensions :: Preset -> (Word32, Word32)
 presetIconDimensions Preset{..} = runGet getIhdrDimensions $ head presetIcon
 
-prettyParams :: Preset -> Doc ann
-prettyParams = concatWith (<\>) . Map.mapWithKey prettyParam . presetParams
+prettyParams :: Map Text ParamValue -> Doc ann
+prettyParams = concatWith (<\>) . Map.mapWithKey prettyParam
 
-prettyResources :: Preset -> Doc ann
-prettyResources = concatWith (<\\>) . fmap pretty . embeddedResources
+prettyResources :: Map Text Resource -> Doc ann
+prettyResources = concatWith (<\\>) . fmap pretty
 
 instance Pretty Preset where
-  pretty preset = vsep [ "name:"    <+> pretty  (presetName    preset)
-                       , "version:" <+> viaShow (presetVersion preset)
-                       , "paintop:" <+> pretty  (presetPaintop preset)
-                       -- TODO: Add metadata about icon image.
-                       ]
-                  <\\> nest 2 ("Parameters:" <\> prettyParams    preset)
-                  <\\> nest 2 ("Resources:"  <\> prettyResources preset)
+  pretty Preset{..} = vsep [ "name:"    <+> pretty  presetName
+                           , "version:" <+> viaShow presetVersion
+                           , "paintop:" <+> pretty  presetPaintop
+                           -- TODO: Add metadata about icon image.
+                           ]
+                  <\\> nest 2 ("Parameters:" <\> prettyParams    presetParams)
+                  <\\> nest 2 ("Resources:"  <\> prettyResources embeddedResources)
 
 instance Binary Preset where
   get = getPreset

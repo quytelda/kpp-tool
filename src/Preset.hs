@@ -187,13 +187,16 @@ prettyResources :: Map Text Resource -> Doc ann
 prettyResources = concatWith (<\\>) . fmap pretty
 
 instance Pretty Preset where
-  pretty Preset{..} = vsep [ "name:"    <+> pretty  presetName
-                           , "version:" <+> viaShow presetVersion
-                           , "paintop:" <+> pretty  presetPaintop
-                           -- TODO: Add metadata about icon image.
-                           ]
-                  <\\> nest 2 ("Parameters:" <\> prettyParams    presetParams)
-                  <\\> nest 2 ("Resources:"  <\> prettyResources embeddedResources)
+  pretty preset@Preset{..} =
+    vsep [ "name:"    <+> pretty  presetName
+         , "version:" <+> viaShow presetVersion
+         , "paintop:" <+> pretty  presetPaintop
+         , "icon:"    <+> pretty width <> "x" <> pretty height
+         ]
+    <\\> nest 2 ("Parameters:" <\> prettyParams    presetParams)
+    <\\> nest 2 ("Resources:"  <\> prettyResources embeddedResources)
+    where
+      (width, height) = presetIconDimensions preset
 
 instance Binary Preset where
   get = getPreset

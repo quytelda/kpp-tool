@@ -4,6 +4,7 @@
 
 module Preset
   ( Preset(..)
+  , presetIconDimensions
   , ParamValue(..)
   , Resource(..)
   , lookupParam
@@ -33,7 +34,7 @@ import           Data.Text              (Text)
 import qualified Data.Text              as T
 import           Data.Text.Encoding
 import qualified Data.Text.Read         as Read
-import           Prettyprinter
+import           Prettyprinter          hiding (width)
 import           Text.XML
 
 -----------------------------
@@ -121,6 +122,13 @@ getItxtChunk keyword = do
            then decompress content
            else content
 
+getIhdrDimensions :: Get (Word32, Word32)
+getIhdrDimensions = do
+  expect "IHDR"
+  width  <- getWord32be
+  height <- getWord32be
+  return (width, height)
+
 getKeywordChunk :: ByteString -> Get ByteString
 getKeywordChunk key = getTextChunk key <|>
                       getZtxtChunk key <|>
@@ -166,6 +174,9 @@ data Preset = Preset
   , embeddedResources :: !(Map Text Resource)
   , presetIcon        :: ![ByteString]
   } deriving (Show)
+
+presetIconDimensions :: Preset -> (Word32, Word32)
+presetIconDimensions Preset{..} = runGet getIhdrDimensions $ head presetIcon
 
 prettyParams :: Preset -> Doc ann
 prettyParams = concatWith (<\>) . Map.mapWithKey prettyParam . presetParams

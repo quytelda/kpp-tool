@@ -14,6 +14,7 @@ module Preset
   , lookupResourceByName
   , lookupResourceByFile
   , lookupResourceByMD5
+  , insertResource
   , setPresetName
   ) where
 
@@ -473,6 +474,11 @@ lookupResourceByMD5 md5sum = find hasMatchingMD5 . embeddedResources
   where
     resourceCsum = encodeBase16 . MD5.hash . resourceData
     hasMatchingMD5 resource = md5sum == resourceCsum resource
+
+-- | Insert a `Resource` into the embedded resources of a `Preset`.
+insertResource :: Resource -> Preset -> Preset
+insertResource resource@Resource{..}  preset@Preset{..} =
+  preset { embeddedResources = Map.insert resourceName resource embeddedResources }
 
 setPresetName :: Text -> Preset -> Preset
 setPresetName name preset = preset { presetName = name }

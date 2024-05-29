@@ -82,7 +82,19 @@ extract arg preset = preset <$ do
                (lookup "md5"  dict >>= flip lookupResourceByMD5  preset)
 
 insert :: String -> Action
-insert = error "Not implemented yet."
+insert arg preset = do
+  -- TODO: This can probably be simplified by using a second internal
+  -- "do" block and constructing the Resource using RecordWildCards.
+  rData <- traverse BS.readFile (T.unpack <$> rPath)
+  case Resource <$> rName <*> rFile <*> rType <*> rData of
+    Just resource -> return $ insertResource resource preset
+    Nothing       -> fail "insert: invalid resource definition"
+  where
+    dict = commaSep arg >>= keyEqualsValue
+    rPath = lookup "path" dict <|> lookup "file" dict
+    rType = lookup "type" dict
+    rName = lookup "name" dict <|> rPath
+    rFile = lookup "file" dict <|> rPath
 
 extractAll :: Action
 extractAll preset = preset <$ mapM_ writeResource (embeddedResources preset)
@@ -187,7 +199,7 @@ options = [ Option "h" ["help"]
             "Extract all embedded resources."
           , Option "" ["insert"]
             (ReqArg (addAction . insert) "FILE")
-            "(Not Implemented) Insert or update a resource file."
+            "Insert or update a resource file."
           ]
 
 main :: IO ()

@@ -3,15 +3,15 @@
 module Main where
 
 import           Control.Applicative
-import           Control.Arrow
 import           Control.Monad
+import           Data.Bifunctor
 import           Data.Binary
 import qualified Data.ByteString           as BS
 import qualified Data.ByteString.Base64    as Base64
-import qualified Data.ByteString.Char8     as Char8
 import           Data.Functor
 import           Data.Maybe
 import qualified Data.Text                 as T
+import           Data.Text.Encoding
 import qualified Data.Text.IO              as TIO
 import           Prettyprinter
 import           Prettyprinter.Render.Text
@@ -52,18 +52,18 @@ getParam key preset = preset <$
 setParamString :: String -> Action
 setParamString arg preset = do
   (key, val) <- keyEqualsValue arg
-  return $ insertParam (T.pack key) (String $ T.pack val) preset
+  return $ insertParam key (String val) preset
 
 setParamInternal :: String -> Action
 setParamInternal arg preset = do
   (key, val) <- keyEqualsValue arg
-  return $ insertParam (T.pack key) (Internal $ T.pack val) preset
+  return $ insertParam key (Internal val) preset
 
 setParamBinary :: String -> Action
 setParamBinary arg preset = do
   (key, encodedVal) <- keyEqualsValue arg
-  decodedVal <- either fail pure $ Base64.decode $ Char8.pack encodedVal
-  return $ insertParam (T.pack key) (Binary decodedVal) preset
+  decodedVal <- either fail pure $ Base64.decode $ encodeUtf8 encodedVal
+  return $ insertParam key (Binary decodedVal) preset
 
 writeResource :: Resource -> IO ()
 writeResource Resource{..} = do
@@ -73,13 +73,13 @@ writeResource Resource{..} = do
 extract :: String -> Action
 extract arg preset = preset <$ do
   Resource{..} <- maybe (fail "extract: no matching resource found") pure resource
-  let path = fromMaybe (T.unpack resourceFile) $ lookup "path" dict
-  BS.writeFile path resourceData
+  let path = fromMaybe resourceFile $ lookup "path" dict
+  BS.writeFile (T.unpack path) resourceData
   where
-    dict = breakOn '=' <$> commaSep arg
-    resource = (lookup "name" dict >>= flip lookupResourceByName preset . T.pack) <|>
-               (lookup "file" dict >>= flip lookupResourceByFile preset . T.pack) <|>
-               (lookup "md5"  dict >>= flip lookupResourceByMD5  preset . T.pack)
+    dict = commaSep arg >>= keyEqualsValue
+    resource = (lookup "name" dict >>= flip lookupResourceByName preset) <|>
+               (lookup "file" dict >>= flip lookupResourceByFile preset) <|>
+               (lookup "md5"  dict >>= flip lookupResourceByMD5  preset)
 
 insert :: String -> Action
 insert = error "Not implemented yet."
@@ -113,8 +113,8 @@ commaSep :: String -> [String]
 commaSep "" = []
 commaSep xs = uncurry (:) . second commaSep . breakOn ',' $ xs
 
-keyEqualsValue :: MonadFail m => String -> m (String, String)
-keyEqualsValue cs | '=' `elem` cs = pure $ breakOn '=' cs
+keyEqualsValue :: MonadFail m => String -> m (T.Text, T.Text)
+keyEqualsValue cs | '=' `elem` cs = pure $ bimap T.pack T.pack $ breakOn '=' cs
                   | otherwise     = fail "expecting KEY=VALUE"
 
 data Config = Config

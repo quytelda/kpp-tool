@@ -2,6 +2,7 @@
 {-# LANGUAGE RecordWildCards   #-}
 module Main where
 
+import           Control.Applicative
 import           Control.Arrow
 import           Control.Monad
 import           Data.Binary
@@ -9,7 +10,7 @@ import qualified Data.ByteString           as BS
 import qualified Data.ByteString.Base64    as Base64
 import qualified Data.ByteString.Char8     as Char8
 import           Data.Functor
-import           Data.Maybe                (listToMaybe)
+import           Data.Maybe
 import qualified Data.Text                 as T
 import qualified Data.Text.IO              as TIO
 import           Prettyprinter
@@ -70,10 +71,15 @@ writeResource Resource{..} = do
   BS.writeFile (T.unpack resourceFile) resourceData
 
 extract :: String -> Action
-extract name preset = preset <$
-  case lookupResourceByName (T.pack name) preset of
-    Just res -> writeResource res
-    Nothing  -> error $ "No such resource: " <> name
+extract arg preset = preset <$ do
+  Resource{..} <- maybe (fail "extract: no matching resource found") pure resource
+  let path = fromMaybe (T.unpack resourceFile) $ lookup "path" dict
+  BS.writeFile path resourceData
+  where
+    dict = breakOn '=' <$> commaSep arg
+    resource = (lookup "name" dict >>= flip lookupResourceByName preset . T.pack) <|>
+               (lookup "file" dict >>= flip lookupResourceByFile preset . T.pack) <|>
+               (lookup "md5"  dict >>= flip lookupResourceByMD5  preset . T.pack)
 
 insert :: String -> Action
 insert = error "Not implemented yet."

@@ -11,7 +11,9 @@ module Preset
   , Resource(..)
   , lookupParam
   , insertParam
-  , lookupResource
+  , lookupResourceByName
+  , lookupResourceByFile
+  , lookupResourceByMD5
   , setPresetName
   ) where
 
@@ -456,8 +458,21 @@ insertParam key val preset@Preset{..} =
   preset { presetParams = Map.insert key val presetParams }
 
 -- | Look up a resource by name.
-lookupResource :: Text -> Preset -> Maybe Resource
-lookupResource name = Map.lookup name . embeddedResources
+lookupResourceByName :: Text -> Preset -> Maybe Resource
+lookupResourceByName name = Map.lookup name . embeddedResources
+
+-- | Look up a resource by its "filename" attribute (`resourceFile`).
+lookupResourceByFile :: Text -> Preset -> Maybe Resource
+lookupResourceByFile fileName = find hasFileName . embeddedResources
+  where
+    hasFileName Resource{..} = fileName == resourceFile
+
+-- | Look up a resource by its MD5 checksum.
+lookupResourceByMD5 :: Text -> Preset -> Maybe Resource
+lookupResourceByMD5 md5sum = find hasMatchingMD5 . embeddedResources
+  where
+    resourceCsum = encodeBase16 . MD5.hash . resourceData
+    hasMatchingMD5 resource = md5sum == resourceCsum resource
 
 setPresetName :: Text -> Preset -> Preset
 setPresetName name preset = preset { presetName = name }

@@ -71,7 +71,7 @@ writeResource Resource{..} = do
 
 extract :: String -> Action
 extract name preset = preset <$
-  case lookupResource (T.pack name) preset of
+  case lookupResourceByName (T.pack name) preset of
     Just res -> writeResource res
     Nothing  -> error $ "No such resource: " <> name
 

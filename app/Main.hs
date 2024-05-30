@@ -18,6 +18,7 @@ import           Prettyprinter.Render.Text
 import           System.Console.GetOpt
 import           System.Environment
 import           System.Exit
+import           System.FilePath
 import           System.IO
 
 import           Preset
@@ -42,6 +43,12 @@ getName preset = TIO.putStrLn (presetName preset) $> preset
 
 setName :: String -> Action
 setName name = pure . setPresetName (T.pack name)
+
+syncName :: Config -> Action
+syncName Config{..} preset =
+  case configInput of
+    Just path -> setName (takeBaseName path) preset
+    Nothing   -> fail "sync-name: input must be a file path"
 
 getParam :: String -> Action
 getParam key preset = preset <$
@@ -178,6 +185,9 @@ options = [ Option "h" ["help"]
             "Print the preset's metadata name."
           , Option "" ["set-name"]
             (ReqArg (addAction . setName) "STRING")
+            "Change a preset's metadata name."
+          , Option "" ["sync-name"]
+            (NoArg $ \config -> addAction (syncName config) config)
             "Change a preset's metadata name."
           , Option "p" ["get-param"]
             (ReqArg (addAction . getParam) "KEY")

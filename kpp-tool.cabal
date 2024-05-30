@@ -44,7 +44,7 @@ library
     , digest >=0.0.1.7
     , filepath >=1.4 && <2
     , prettyprinter >=1.7 && <2
-    , text >=2.0 && <3
+    , text >=1.2.5 && <3
     , xml-conduit >=1.9 && <2
     , zlib >0.6 && <1
   default-language: Haskell2010
@@ -66,7 +66,7 @@ executable kpp-tool-exe
     , filepath >=1.4 && <2
     , kpp-tool
     , prettyprinter >=1.7 && <2
-    , text >=2.0 && <3
+    , text >=1.2.5 && <3
     , xml-conduit >=1.9 && <2
     , zlib >0.6 && <1
   default-language: Haskell2010
@@ -93,7 +93,7 @@ test-suite kpp-tool-test
     , filepath >=1.4 && <2
     , kpp-tool
     , prettyprinter >=1.7 && <2
-    , text >=2.0 && <3
+    , text >=1.2.5 && <3
     , xml-conduit >=1.9 && <2
     , zlib >0.6 && <1
   default-language: Haskell2010

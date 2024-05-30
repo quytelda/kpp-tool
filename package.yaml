@@ -30,7 +30,7 @@ dependencies:
 - digest >= 0.0.1.7
 - filepath >= 1.4 && < 2
 - prettyprinter >= 1.7 && < 2
-- text >= 2.0 && < 3
+- text >= 1.2.5 && < 3
 - xml-conduit >= 1.9 && < 2
 - zlib > 0.6 && < 1
 

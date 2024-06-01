@@ -17,6 +17,7 @@ module Preset
   , insertResource
   , setPresetName
   , getPresetIcon
+  , setPresetIcon
   ) where
 
 import           Codec.Compression.Zlib
@@ -505,3 +506,12 @@ setPresetName name preset = preset { presetName = name }
 getPresetIcon :: Preset -> ByteString
 getPresetIcon Preset{..} =
   runPut $ putMagicString *> traverse_ putChunk presetIcon
+
+-- | Change a preset's icon image.
+--
+-- The new icon is passed in the form of PNG data.
+setPresetIcon :: ByteString -> Preset -> Either String Preset
+setPresetIcon pngData preset =
+  case runGetOrFail (getMagicString *> some getChunk) pngData of
+    Left  (_, _, err)    -> Left err
+    Right (_, _, chunks) -> Right $ preset { presetIcon = chunks }

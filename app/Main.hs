@@ -110,6 +110,13 @@ extractAll preset = preset <$ mapM_ writeResource (embeddedResources preset)
 getIcon :: FilePath -> Action
 getIcon path preset = preset <$ BL.writeFile path (getPresetIcon preset)
 
+setIcon :: FilePath -> Action
+setIcon path preset = do
+  pngData <- BL.readFile path
+  case setPresetIcon pngData preset of
+    Left  err     -> fail $ "set-icon: " <> err
+    Right preset' -> return preset'
+
 -- | Helper function for decoding presets
 decoder :: Applicative f => BS.ByteString -> f Preset
 decoder = pure . decode . BS.fromStrict
@@ -226,6 +233,9 @@ options = [ Option "h" ["help"]
           , Option "c" ["get-icon"]
             (ReqArg (addAction . getIcon) "FILE")
             "Extract a preset's icon image."
+          , Option "I" ["set-icon"]
+            (ReqArg (addAction . setIcon) "FILE")
+            "Change a preset's icon image."
           ]
 
 main :: IO ()

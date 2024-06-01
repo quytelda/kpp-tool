@@ -194,51 +194,58 @@ options = [ Option "h" ["help"]
             "Display version information."
           , Option "o" ["output"]
             (ReqArg setOutput "FILE")
-            "Write preset data to FILE.\nOverrides -i/--in-place."
+            "Write preset data to FILE.\n\
+            \-o/--option overrides the -i/--in-place option."
           , Option "i" ["in-place"]
             (NoArg $ \c -> c {configOutput = configInput c})
-            "Modify a preset file in-place.\nOverrides -o/--output."
+            "Modify a preset file in-place.\n\
+            \-i/--in-place overrides the -o/--output option."
 
           -- Actions
           , Option "s" ["show"]
             (NoArg $ addAction showPreset)
-            "Print preset information."
+            "Print a description of a preset."
           , Option "" ["get-name"]
             (NoArg $ addAction getName)
-            "Print the preset's metadata name."
+            "Print a preset's metadata name."
           , Option "" ["set-name"]
             (ReqArg (addAction . setName) "STRING")
             "Change a preset's metadata name."
           , Option "" ["sync-name"]
             (NoArg $ \config -> addAction (syncName config) config)
-            "Change a preset's metadata name."
+            "Change a preset's metadata name to match it's filename.\n\
+            \For example, 'kpp-tool --sync-name foobar.kpp' will change\n\
+            \the preset's name to \"foobar\"."
           , Option "p" ["get-param"]
             (ReqArg (addAction . getParam) "KEY")
-            "Print the value of a parameter."
+            "Print the value of a single parameter.\n\
+            \If the value is binary, it will be displayed in base-64."
           , Option "" ["set-param-string"]
             (ReqArg (addAction . setParamString) "KEY=VALUE")
-            "Set the value of parameter."
+            "Set the value of a string parameter."
           , Option "" ["set-param-internal"]
             (ReqArg (addAction . setParamInternal) "KEY=VALUE")
-            "Set the value of parameter."
+            "Set the value of an internal parameter."
           , Option "" ["set-param-binary"]
             (ReqArg (addAction . setParamBinary) "KEY=VALUE")
-            "(Not Implemented) Set the value of parameter."
+            "Set the value of binary (bytearray) parameter.\n\
+            \VALUE should be encoded in base-64."
           , Option "e" ["extract"]
-            (ReqArg (addAction . extract) "NAME")
+            (ReqArg (addAction . extract) "RESOURCE")
             "Extract an embedded resource."
           , Option "" ["extract-all"]
             (NoArg $ addAction extractAll)
             "Extract all embedded resources."
           , Option "" ["insert"]
-            (ReqArg (addAction . insert) "FILE")
+            (ReqArg (addAction . insert) "RESOURCE")
             "Insert or update a resource file."
           , Option "c" ["get-icon"]
             (ReqArg (addAction . getIcon) "FILE")
             "Extract a preset's icon image."
           , Option "I" ["set-icon"]
             (ReqArg (addAction . setIcon) "FILE")
-            "Change a preset's icon image."
+            "Change a preset's icon image.\n\
+            \FILE must be a PNG file."
           ]
 
 main :: IO ()

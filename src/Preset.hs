@@ -16,6 +16,7 @@ module Preset
   , lookupResourceByMD5
   , insertResource
   , setPresetName
+  , getPresetIcon
   ) where
 
 import           Codec.Compression.Zlib
@@ -499,3 +500,8 @@ insertResource resource@Resource{..}  preset@Preset{..} =
 -- filename.
 setPresetName :: Text -> Preset -> Preset
 setPresetName name preset = preset { presetName = name }
+
+-- | Get a preset's icon image as PNG data.
+getPresetIcon :: Preset -> ByteString
+getPresetIcon Preset{..} =
+  runPut $ putMagicString *> traverse_ putChunk presetIcon

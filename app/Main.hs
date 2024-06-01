@@ -8,6 +8,7 @@ import           Data.Bifunctor
 import           Data.Binary
 import qualified Data.ByteString           as BS
 import qualified Data.ByteString.Base64    as Base64
+import qualified Data.ByteString.Lazy      as BL
 import           Data.Functor
 import           Data.Maybe
 import qualified Data.Text                 as T
@@ -105,6 +106,9 @@ insert arg preset = do
 
 extractAll :: Action
 extractAll preset = preset <$ mapM_ writeResource (embeddedResources preset)
+
+getIcon :: FilePath -> Action
+getIcon path preset = preset <$ BL.writeFile path (getPresetIcon preset)
 
 -- | Helper function for decoding presets
 decoder :: Applicative f => BS.ByteString -> f Preset
@@ -219,6 +223,9 @@ options = [ Option "h" ["help"]
           , Option "" ["insert"]
             (ReqArg (addAction . insert) "FILE")
             "Insert or update a resource file."
+          , Option "c" ["get-icon"]
+            (ReqArg (addAction . getIcon) "FILE")
+            "Extract a preset's icon image."
           ]
 
 main :: IO ()

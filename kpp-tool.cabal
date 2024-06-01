@@ -91,6 +91,7 @@ test-suite kpp-tool-test
     , cryptohash-md5 >=0.11.100
     , digest >=0.0.1.7
     , filepath >=1.4 && <2
+    , hspec >=2.9 && <3
     , kpp-tool
     , prettyprinter >=1.7 && <2
     , text >=1.2.5 && <3

@@ -72,3 +72,4 @@ tests:
     - -with-rtsopts=-N
     dependencies:
     - kpp-tool
+    - hspec >= 2.9 && < 3

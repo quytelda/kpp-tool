@@ -1,4 +1,3 @@
-{-# LANGUAGE LambdaCase        #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards   #-}
 
@@ -9,6 +8,7 @@ module Preset
   , prettyResources
   , ParamValue(..)
   , Resource(..)
+  , resourceMD5
   , lookupParam
   , insertParam
   , lookupResourceByName
@@ -180,12 +180,15 @@ data Preset = Preset
   , presetIcon        :: ![ByteString]
   } deriving (Show)
 
+-- | Get the dimensions of the preset icon image.
 presetIconDimensions :: Preset -> (Word32, Word32)
 presetIconDimensions Preset{..} = runGet getIhdrDimensions $ head presetIcon
 
+-- | Format a parameter table.
 prettyParams :: Map Text ParamValue -> Doc ann
 prettyParams = concatWith (<\>) . Map.mapWithKey prettyParam
 
+-- | Format a resource table.
 prettyResources :: Map Text Resource -> Doc ann
 prettyResources = concatWith (<\\>) . fmap pretty
 
@@ -267,6 +270,12 @@ decodeBase64 t =
       bs2 = Base64.decode =<< bs1
   in bs2 <> bs1
 
+md5sum :: BS.ByteString -> Text
+md5sum = encodeBase16 . MD5.hash
+
+-- | Helper function to parse an Int from a Text value.
+--
+-- Note: This function fails if unconsumed data remains after parsing.
 decodeInt :: Text -> Either String Int
 decodeInt t = case Read.decimal t of
     Right (n, "") -> Right n
@@ -278,6 +287,7 @@ attributeText name Element{..} =
     Just v  -> Right v
     Nothing -> Left $ "missing attribute: " <> (show $ nameLocalName name)
 
+-- | Get all the content nodes inside an element and combine them.
 contentText :: Element -> Either String Text
 contentText (Element _ _ nodes) =
   case [text | NodeContent text <- nodes] of
@@ -364,14 +374,13 @@ data Resource = Resource { resourceName :: !Text
                          } deriving (Show)
 
 instance Pretty Resource where
-  pretty Resource{..} = vsep [ "name:" <+> pretty resourceName
-                             , "file:" <+> pretty resourceFile
-                             , "type:" <+> pretty resourceType
-                             , "data:" <+> prettyByteData resourceData
-                             , "md5:"  <+> pretty resourceCsum
-                             ]
-    where
-      resourceCsum = encodeBase16 $ MD5.hash resourceData
+  pretty Resource{..} =
+    vsep [ "name:" <+> pretty resourceName
+         , "file:" <+> pretty resourceFile
+         , "type:" <+> pretty resourceType
+         , "data:" <+> prettyByteData resourceData
+         , "md5:"  <+> pretty (md5sum resourceData)
+         ]
 
 parseXmlResource :: Element -> Either String Resource
 parseXmlResource e@(Element "resource" _ _) = do
@@ -389,7 +398,7 @@ parseXmlResource _ = Left "expected <resource> element"
 
 renderXmlResource :: Resource -> Element
 renderXmlResource Resource{..} =
-  let resourceCsum      = encodeBase16 $ MD5.hash resourceData
+  let resourceCsum      = md5sum resourceData
       elementName       = "resource"
       elementNodes      = [NodeContent $ encodeBase64 resourceData]
       elementAttributes = Map.fromList [ ("name",     resourceName)
@@ -449,6 +458,11 @@ renderXmlPreset Preset{..} =
 -- Convenience Functions --
 ---------------------------
 
+-- | Calculate the MD5 checksum of a `Resource` displayed in
+-- hexadecimal notation.
+resourceMD5 :: Resource -> Text
+resourceMD5 = md5sum . resourceData
+
 -- | Look up the value of a preset parameter.
 lookupParam :: Text -> Preset -> Maybe ParamValue
 lookupParam key = Map.lookup key . presetParams
@@ -470,15 +484,18 @@ lookupResourceByFile fileName = find hasFileName . embeddedResources
 
 -- | Look up a resource by its MD5 checksum.
 lookupResourceByMD5 :: Text -> Preset -> Maybe Resource
-lookupResourceByMD5 md5sum = find hasMatchingMD5 . embeddedResources
+lookupResourceByMD5 md5 = find hasMatchingMD5 . embeddedResources
   where
-    resourceCsum = encodeBase16 . MD5.hash . resourceData
-    hasMatchingMD5 resource = md5sum == resourceCsum resource
+    hasMatchingMD5 resource = md5 == resourceMD5 resource
 
 -- | Insert a `Resource` into the embedded resources of a `Preset`.
 insertResource :: Resource -> Preset -> Preset
 insertResource resource@Resource{..}  preset@Preset{..} =
   preset { embeddedResources = Map.insert resourceName resource embeddedResources }
 
+-- | Change a preset's metadata name.
+--
+-- This sets the name that is displayed inside Krita, not the
+-- filename.
 setPresetName :: Text -> Preset -> Preset
 setPresetName name preset = preset { presetName = name }

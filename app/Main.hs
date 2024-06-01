@@ -118,6 +118,7 @@ encoder = pure . BS.toStrict . encode
 discard :: Applicative f => a -> f ()
 discard = const $ pure ()
 
+-- | Helper function to compose a sequence of `Actions`.
 compose :: [Action] -> Action
 compose = foldr1 (>=>)
 
@@ -125,17 +126,21 @@ compose = foldr1 (>=>)
 -- Argument Parsing --
 ----------------------
 
+-- | Split on the first occurrence of some value.
 breakOn :: Eq a => a -> [a] -> ([a], [a])
 breakOn c = second (drop 1) . break (== c)
 
+-- | Parse comma separated strings.
 commaSep :: String -> [String]
-commaSep "" = []
+commaSep [] = []
 commaSep xs = uncurry (:) . second commaSep . breakOn ',' $ xs
 
+-- | Try to parse a key-value string in "KEY=VALUE" format.
 keyEqualsValue :: MonadFail m => String -> m (T.Text, T.Text)
 keyEqualsValue cs | '=' `elem` cs = pure $ bimap T.pack T.pack $ breakOn '=' cs
                   | otherwise     = fail "expecting KEY=VALUE"
 
+-- | `Config` represents runtime configuration options.
 data Config = Config
   { configHelp    :: Bool
   , configVersion :: Bool
@@ -144,6 +149,7 @@ data Config = Config
   , configActions :: [Action]
   }
 
+-- | Default runtime configuration options.
 defaults :: Config
 defaults = Config
   { configHelp    = False
@@ -153,12 +159,15 @@ defaults = Config
   , configActions = []
   }
 
+-- | Helper function to add an `Action` to the execution sequence in a Config.
 addAction :: Action -> Config -> Config
 addAction action config@Config{..} = config { configActions = action : configActions }
 
-addFileSink :: FilePath -> Config -> Config
-addFileSink path config = config {configOutput = Just path}
+-- | Helper function to set the configuration output file.
+setOutput :: FilePath -> Config -> Config
+setOutput path config = config {configOutput = Just path}
 
+-- | Helper function to set the configuration input file.
 setInput :: FilePath -> Config -> Config
 setInput path config = config {configInput = Just path}
 
@@ -170,7 +179,7 @@ options = [ Option "h" ["help"]
             (NoArg $ \c -> c {configVersion = True})
             "Display version information."
           , Option "o" ["output"]
-            (ReqArg addFileSink "FILE")
+            (ReqArg setOutput "FILE")
             "Write preset data to FILE.\nOverrides -i/--in-place."
           , Option "i" ["in-place"]
             (NoArg $ \c -> c {configOutput = configInput c})

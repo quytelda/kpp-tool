@@ -73,21 +73,23 @@ setParamBinary arg preset = do
   decodedVal <- either fail pure $ Base64.decode $ encodeUtf8 encodedVal
   return $ insertParam key (Binary decodedVal) preset
 
-writeResource :: Resource -> IO ()
-writeResource Resource{..} = do
-  TIO.putStrLn $ "--> Writing resource data to: " <> resourceFile
-  BS.writeFile (T.unpack resourceFile) resourceData
+writeResource :: Maybe FilePath -> Resource -> IO ()
+writeResource mpath Resource{..} = do
+  putStrLn $ "==> Writing resource data to: " <> path
+  BS.writeFile path resourceData
+  where
+    path = fromMaybe (T.unpack resourceFile) mpath
 
 extract :: String -> Action
-extract arg preset = preset <$ do
-  Resource{..} <- maybe (fail "extract: no matching resource found") pure resource
-  let path = fromMaybe resourceFile $ lookup "path" dict
-  BS.writeFile (T.unpack path) resourceData
+extract arg preset = preset <$
+  case mresource of
+    Nothing       -> fail "extract: no matching resource found"
+    Just resource -> writeResource (T.unpack <$> lookup "path" opts) resource
   where
-    dict = commaSep arg >>= keyEqualsValue
-    resource = (lookup "name" dict >>= flip lookupResourceByName preset) <|>
-               (lookup "file" dict >>= flip lookupResourceByFile preset) <|>
-               (lookup "md5"  dict >>= flip lookupResourceByMD5  preset)
+    opts      = commaSep arg >>= keyEqualsValue
+    mresource = (lookup "name" opts >>= flip lookupResourceByName preset) <|>
+                (lookup "file" opts >>= flip lookupResourceByFile preset) <|>
+                (lookup "md5"  opts >>= flip lookupResourceByMD5  preset)
 
 insert :: String -> Action
 insert arg preset = do
@@ -98,14 +100,15 @@ insert arg preset = do
     Just resource -> return $ insertResource resource preset
     Nothing       -> fail "insert: invalid resource definition"
   where
-    dict = commaSep arg >>= keyEqualsValue
-    rPath = lookup "path" dict <|> lookup "file" dict
-    rType = lookup "type" dict
-    rName = lookup "name" dict <|> rPath
-    rFile = lookup "file" dict <|> rPath
+    opts = commaSep arg >>= keyEqualsValue
+    rPath = lookup "path" opts <|> lookup "file" opts
+    rType = lookup "type" opts
+    rName = lookup "name" opts <|> rPath
+    rFile = lookup "file" opts <|> rPath
 
 extractAll :: Action
-extractAll preset = preset <$ mapM_ writeResource (embeddedResources preset)
+extractAll preset = preset <$
+  mapM_ (writeResource Nothing) (embeddedResources preset)
 
 getIcon :: FilePath -> Action
 getIcon path preset = preset <$ BL.writeFile path (getPresetIcon preset)

@@ -36,6 +36,10 @@ import           Preset
 -- sequenced `Action`s.
 type Action = Preset -> IO Preset
 
+writePreset :: FilePath -> Action
+writePreset path preset = preset <$ do
+  encoder preset >>= BS.writeFile path
+
 showPreset :: Action
 showPreset preset = putDoc (pretty preset) *> putChar '\n' $> preset
 
@@ -159,7 +163,7 @@ data Config = Config
   { configHelp    :: Bool
   , configVersion :: Bool
   , configInput   :: Maybe FilePath
-  , configOutput  :: Maybe FilePath
+  , configInPlace :: Bool
   , configActions :: [Action]
   }
 
@@ -169,17 +173,13 @@ defaults = Config
   { configHelp    = False
   , configVersion = False
   , configInput   = Nothing
-  , configOutput  = Nothing
+  , configInPlace = False
   , configActions = []
   }
 
 -- | Helper function to add an `Action` to the execution sequence in a Config.
 addAction :: Action -> Config -> Config
 addAction action config@Config{..} = config { configActions = action : configActions }
-
--- | Helper function to set the configuration output file.
-setOutput :: FilePath -> Config -> Config
-setOutput path config = config {configOutput = Just path}
 
 -- | Helper function to set the configuration input file.
 setInput :: FilePath -> Config -> Config
@@ -192,16 +192,14 @@ options = [ Option "h" ["help"]
           , Option "v" ["version"]
             (NoArg $ \c -> c {configVersion = True})
             "Display version information."
-          , Option "o" ["output"]
-            (ReqArg setOutput "FILE")
-            "Write preset data to FILE.\n\
-            \-o/--option overrides the -i/--in-place option."
           , Option "i" ["in-place"]
-            (NoArg $ \c -> c {configOutput = configInput c})
-            "Modify a preset file in-place.\n\
-            \-i/--in-place overrides the -o/--output option."
+            (NoArg $ \c -> c {configInPlace = True})
+            "Modify a preset file in-place."
 
           -- Actions
+          , Option "o" ["output"]
+            (ReqArg (addAction . writePreset) "FILE")
+            "Write preset data to FILE."
           , Option "s" ["show"]
             (NoArg $ addAction showPreset)
             "Print a description of a preset."
@@ -267,11 +265,15 @@ main = do
     putStrLn "not implemented yet"
     exitSuccess
 
-  let source = maybe BS.getContents BS.readFile  configInput
-      sink   = maybe discard        BS.writeFile configOutput
+  let source = maybe BS.getContents BS.readFile configInput
+      sink   = if configInPlace
+               then maybe missingInputError BS.writeFile configInput
+               else discard
 
   source
     >>= decoder
     >>= compose configActions
     >>= encoder
     >>= sink
+  where
+    missingInputError = error "an input file is required for --in-place"

@@ -9,6 +9,7 @@ import           Data.Binary
 import qualified Data.ByteString           as BS
 import qualified Data.ByteString.Base64    as Base64
 import qualified Data.ByteString.Lazy      as BL
+import           Data.Char
 import           Data.Functor
 import           Data.Maybe
 import qualified Data.Text                 as T
@@ -17,6 +18,7 @@ import qualified Data.Text.IO              as TIO
 import           Prettyprinter
 import           Prettyprinter.Render.Text
 import           System.Console.GetOpt
+import           System.Directory
 import           System.Environment
 import           System.Exit
 import           System.FilePath
@@ -54,6 +56,17 @@ syncName Config{..} preset =
   case configInput of
     Just path -> setName (takeBaseName path) preset
     Nothing   -> fail "sync-name: input must be a file path"
+
+normalizeName :: Config -> Action
+normalizeName Config{..} preset@Preset{..} =
+  case configInput of
+    Just path -> do let name = normalize (takeBaseName path)
+                    renameFile path (dropFileName path </> name <.> "kpp")
+                    setName name preset >>= writePreset path
+    Nothing   -> do let name = normalize (T.unpack presetName)
+                    setName name preset
+  where
+    normalize = map (\c -> if isSpace c then '_' else c)
 
 getParam :: String -> Action
 getParam key preset = preset <$
@@ -214,6 +227,11 @@ options = [ Option "h" ["help"]
             "Change a preset's metadata name to match it's filename.\n\
             \For example, 'kpp-tool --sync-name foobar.kpp' will change\n\
             \the preset's name to \"foobar\"."
+          , Option "" ["normalize-name"]
+            (NoArg $ \config -> addAction (normalizeName config) config)
+            "Change a preset's metadata name to match it's filename,\n\
+            \replacing spaces with underscores; if the input is from stdin,\n\
+            \spaces are replaced with underscores in the metadata name."
           , Option "p" ["get-param"]
             (ReqArg (addAction . getParam) "KEY")
             "Print the value of a single parameter.\n\

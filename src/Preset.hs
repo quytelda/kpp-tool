@@ -48,6 +48,11 @@ import           Text.XML
 -- PNG Parsing & Rendering --
 -----------------------------
 
+runGetOrFail' :: MonadFail f => Get a -> ByteString -> f a
+runGetOrFail' g input = case runGetOrFail g input of
+  Right (_, _, result) -> pure result
+  Left  (_, _, err)    -> fail err
+
 getNull :: Get ()
 getNull = do
   b <- getWord8
@@ -70,22 +75,39 @@ getMagicString = expect pngMagicString
 putMagicString :: Put
 putMagicString = putLazyByteString pngMagicString
 
-getChunk :: Get ByteString
+data Chunk = VersionChunk ByteString
+           | SettingChunk ByteString
+           | RegularChunk ByteString
+           deriving (Show)
+
+instance Binary Chunk where
+  get = getChunk
+  put = putChunk
+
+getChunk :: Get Chunk
 getChunk = do
   chunkLength <- getWord32be
   chunkData   <- getLazyByteString $ fromIntegral (4 + chunkLength)
   chunkCsum   <- getWord32be
 
   if chunkCsum == crc32 chunkData
-    then return chunkData
+    then runGetOrFail' getChunkData chunkData
     else fail "checksum mismatch"
+  where
+    getChunkData = VersionChunk <$> getKeywordChunk "version" <|>
+                   SettingChunk <$> getKeywordChunk "preset"  <|>
+                   RegularChunk <$> getRemainingLazyByteString
 
-putChunk :: ByteString -> Put
-putChunk chunkData = do
+putChunk :: Chunk -> Put
+putChunk chunk = do
   putWord32be chunkLength
   putLazyByteString chunkData
   putWord32be chunkCsum
   where
+    chunkData = runPut $ case chunk of
+      VersionChunk version -> putTextChunk "version" version
+      SettingChunk xml     -> putZtxtChunk "preset"  xml
+      RegularChunk bytes   -> putLazyByteString bytes
     chunkLength = fromIntegral $ BL.length chunkData - 4
     chunkCsum   = crc32 chunkData
 
@@ -141,23 +163,17 @@ getKeywordChunk key = getTextChunk key <|>
                       getZtxtChunk key <|>
                       getItxtChunk key
 
-getVersionChunk :: Get BS.ByteString
-getVersionChunk = BS.toStrict <$> getKeywordChunk "version"
+makeVersionChunk :: BS.ByteString -> Chunk
+makeVersionChunk = VersionChunk . BS.fromStrict
 
-putVersionChunk :: BS.ByteString -> Put
-putVersionChunk = putTextChunk "version" . BS.fromStrict
-
-getSettingChunk :: Get ByteString
-getSettingChunk = getKeywordChunk "preset"
-
-putSettingChunk :: Preset -> Put
-putSettingChunk preset =
+makeSettingChunk :: Preset -> Chunk
+makeSettingChunk preset =
   let documentPrologue = Prologue [] Nothing []
       documentEpilogue = []
       documentRoot     = renderXmlPreset preset
       renderSettings   = def { rsUseCDATA = const True }
       xml              = renderLBS renderSettings Document{..}
-  in putZtxtChunk "preset" xml
+  in SettingChunk xml
 
 -------------------------------------------
 -- Preset (KPP file) Parsing & Rendering --
@@ -213,24 +229,28 @@ instance Binary Preset where
 getPreset :: Get Preset
 getPreset = do
   getMagicString
-  chunks <- many getChunk
+  chunks <- some getChunk
 
-  case foldr addChunk ([],[],[]) chunks of
-    ([version], [settings], chunks') -> either fail pure
-                                        $ parseXmlPreset version chunks'
-                                        $ documentRoot
-                                        $ parseLBS_ def settings
-    ([]       , _         , _      ) -> fail "missing preset version chunk"
-    (_        , []        , _      ) -> fail "missing preset settings chunk"
-    _                                -> fail "duplicated metadata chunks"
-  where
-    slot1 a (xs, ys, zs) = (a:xs,   ys,   zs)
-    slot2 a (xs, ys, zs) = (  xs, a:ys,   zs)
-    slot3 a (xs, ys, zs) = (  xs,   ys, a:zs)
-    addChunk chunk = flip runGet chunk $
-      slot1 <$> getVersionChunk <|>
-      slot2 <$> getSettingChunk <|>
-      slot3 <$> pure chunk
+  let vs = [v | VersionChunk v <- chunks]
+      ps = [p | SettingChunk p <- chunks]
+      rs = [r | RegularChunk r <- chunks]
+
+  when (null vs) $
+    fail "missing preset version chunk"
+
+  when (null ps) $
+    fail "missing preset settings chunks"
+
+  when (length vs > 1 || length ps > 1) $
+    fail "duplicated metadata chunks"
+
+  let version = BS.toStrict (head vs)
+      xml     = head ps
+
+  either fail pure
+    $ parseXmlPreset version rs
+    $ documentRoot
+    $ parseLBS_ def xml
 
 putPreset :: Preset -> Put
 putPreset preset@Preset{..} = do
@@ -239,14 +259,14 @@ putPreset preset@Preset{..} = do
   -- but before the IDAT chunks, so this code matches the behavior.
   let isFollower bs = BL.isPrefixOf "IDAT" bs || BL.isPrefixOf "IEND" bs
       (pre, post) = break isFollower presetIcon
-      versionChunk = runPut $ putVersionChunk presetVersion
-      settingChunk = runPut $ putSettingChunk preset
+      versionChunk = makeVersionChunk presetVersion
+      settingChunk = makeSettingChunk preset
 
   putMagicString
-  traverse_ putChunk pre
-  putChunk settingChunk
-  putChunk versionChunk
-  traverse_ putChunk post
+  traverse_ put (RegularChunk <$> pre)
+  put settingChunk
+  put versionChunk
+  traverse_ put (RegularChunk <$> post)
 
 -----------------------------
 -- XML Parsing & Rendering --
@@ -504,8 +524,7 @@ setPresetName name preset = preset { presetName = name }
 
 -- | Get a preset's icon image as PNG data.
 getPresetIcon :: Preset -> ByteString
-getPresetIcon Preset{..} =
-  runPut $ putMagicString *> traverse_ putChunk presetIcon
+getPresetIcon Preset{..} = runPut $ putMagicString *> traverse_ put (RegularChunk <$> presetIcon)
 
 -- | Change a preset's icon image.
 --
@@ -514,4 +533,4 @@ setPresetIcon :: ByteString -> Preset -> Either String Preset
 setPresetIcon pngData preset =
   case runGetOrFail (getMagicString *> some getChunk) pngData of
     Left  (_, _, err)    -> Left err
-    Right (_, _, chunks) -> Right $ preset { presetIcon = chunks }
+    Right (_, _, chunks) -> Right $ preset { presetIcon = [c | RegularChunk c <- chunks] }

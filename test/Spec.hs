@@ -3,6 +3,7 @@
 
 import           Data.Binary
 import qualified Data.ByteString.Lazy as BL
+import           Data.Int             (Int64)
 import qualified Data.Map.Strict      as Map
 import           Data.Maybe
 import           Test.Hspec
@@ -11,6 +12,9 @@ import           Preset
 
 main :: IO ()
 main = hspec specPreset
+
+pngIHDRChunkSize :: Int64
+pngIHDRChunkSize = 17
 
 specPreset :: Spec
 specPreset = describe "Preset" $ do
@@ -44,7 +48,7 @@ specPreset = describe "Preset" $ do
         length presetIcon `shouldBe` 6
 
         BL.take 4 ihdrChunk `shouldBe` "IHDR"
-        BL.length ihdrChunk `shouldBe` 17 -- per PNG specification
+        BL.length ihdrChunk `shouldBe` pngIHDRChunkSize
         width  `shouldBe` 200
         height `shouldBe` 200
 
@@ -61,3 +65,20 @@ specPreset = describe "Preset" $ do
 
       specify "can be encoded as a lazy ByteString" $ \preset -> do
         (decode . encode) preset `shouldBe` preset
+
+      specify "can change a preset icon" $ \preset -> do
+        scribble   <- BL.readFile "kpp/basic-ellipse.kpp"
+        Preset{..} <- either fail pure $ setPresetIcon scribble preset
+        let ihdrChunk = head presetIcon
+            iendChunk = last presetIcon
+            width     = decode (BL.take 4 $ BL.drop 4 ihdrChunk) :: Word32
+            height    = decode (BL.take 4 $ BL.drop 8 ihdrChunk) :: Word32
+
+        length presetIcon `shouldBe` 7
+
+        BL.take 4 ihdrChunk `shouldBe` "IHDR"
+        BL.length ihdrChunk `shouldBe` pngIHDRChunkSize
+        width  `shouldBe` 200
+        height `shouldBe` 200
+
+        iendChunk `shouldBe` "IEND"

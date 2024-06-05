@@ -58,3 +58,6 @@ specPreset = describe "Preset" $ do
         resourceFile brush `shouldBe` "egg.png"
         resourceType brush `shouldBe` "brushes"
         resourceMD5  brush `shouldBe` md5sum
+
+      specify "can be encoded as a lazy ByteString" $ \preset -> do
+        (decode . encode) preset `shouldBe` preset

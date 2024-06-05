@@ -331,7 +331,7 @@ prettyParam key val = pretty key <> ":" <+> pretty val
 data ParamValue = String   !Text
                 | Internal !Text
                 | Binary   !BS.ByteString
-                deriving (Show)
+                deriving (Eq, Show)
 
 instance Pretty ParamValue where
   pretty (String   val) = dquotes  (pretty val)

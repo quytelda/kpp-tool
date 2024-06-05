@@ -74,7 +74,7 @@ specPreset = describe "Preset" $ do
             width     = decode (BL.take 4 $ BL.drop 4 ihdrChunk) :: Word32
             height    = decode (BL.take 4 $ BL.drop 8 ihdrChunk) :: Word32
 
-        length presetIcon `shouldBe` 7
+        length presetIcon `shouldBe` 5
 
         BL.take 4 ihdrChunk `shouldBe` "IHDR"
         BL.length ihdrChunk `shouldBe` pngIHDRChunkSize

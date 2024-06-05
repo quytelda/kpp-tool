@@ -180,7 +180,7 @@ data Preset = Preset
   , presetParams      :: !(Map Text ParamValue)
   , embeddedResources :: !(Map Text Resource)
   , presetIcon        :: ![ByteString]
-  } deriving (Show)
+  } deriving (Eq, Show)
 
 -- | Get the dimensions of the preset icon image.
 presetIconDimensions :: Preset -> (Word32, Word32)
@@ -373,7 +373,7 @@ data Resource = Resource { resourceName :: !Text
                          , resourceFile :: !Text
                          , resourceType :: !Text
                          , resourceData :: !BS.ByteString
-                         } deriving (Show)
+                         } deriving (Eq, Show)
 
 instance Pretty Resource where
   pretty Resource{..} =

@@ -208,7 +208,8 @@ prettyParams = concatWith (<\>) . Map.mapWithKey prettyParam
 
 -- | Format a resource table.
 prettyResources :: Map Text Resource -> Doc ann
-prettyResources = concatWith (<\\>) . fmap pretty
+prettyResources m | Map.null m = "No Resources"
+                  | otherwise  = concatWith (<\\>) $ pretty <$> m
 
 instance Pretty Preset where
   pretty preset@Preset{..} =
@@ -217,8 +218,8 @@ instance Pretty Preset where
          , "paintop:" <+> pretty  presetPaintop
          , "icon:"    <+> pretty width <> "x" <> pretty height
          ]
-    <\\> nest 2 ("Parameters:" <\> prettyParams    presetParams)
-    <\\> nest 2 ("Resources:"  <\> prettyResources embeddedResources)
+    <\\> nest 2 ("Parameters:"          <\> prettyParams    presetParams)
+    <\\> nest 2 ("Embedded Resources:"  <\> prettyResources embeddedResources)
     where
       (width, height) = presetIconDimensions preset
 

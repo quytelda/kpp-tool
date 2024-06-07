@@ -230,26 +230,26 @@ instance Binary Preset where
 getPreset :: Get Preset
 getPreset = do
   getMagicString
+
   chunks <- some getChunk
+  let versionChunks = [v | VersionChunk v <- chunks]
+      settingChunks = [p | SettingChunk p <- chunks]
+      regularChunks = [r | RegularChunk r <- chunks]
 
-  let vs = [v | VersionChunk v <- chunks]
-      ps = [p | SettingChunk p <- chunks]
-      rs = [r | RegularChunk r <- chunks]
-
-  when (null vs) $
+  when (null versionChunks) $
     fail "missing preset version chunk"
 
-  when (null ps) $
+  when (null settingChunks) $
     fail "missing preset settings chunks"
 
-  when (length vs > 1 || length ps > 1) $
+  when (length versionChunks > 1 || length settingChunks > 1) $
     fail "duplicated metadata chunks"
 
-  let version = BS.toStrict (head vs)
-      xml     = head ps
+  let version = BS.toStrict (head versionChunks)
+      xml     = head settingChunks
 
   either fail pure
-    $ parseXmlPreset version rs
+    $ parseXmlPreset version regularChunks
     $ documentRoot
     $ parseLBS_ def xml
 

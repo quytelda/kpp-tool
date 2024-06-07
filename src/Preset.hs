@@ -449,12 +449,12 @@ parseXmlPreset :: BS.ByteString -> [ByteString] -> Element -> Either String Pres
 parseXmlPreset presetVersion presetIcon e@(Element "Preset" _ _) = do
   presetName    <- attributeText "name"      e
   presetPaintop <- attributeText "paintopid" e
-  resourceCount <- attributeText "embedded_resources" e >>= decodeInt
+  resourceCount <- optional $ attributeText "embedded_resources" e >>= decodeInt
 
   (presetParams, embeddedResources) <- first Map.fromList <$>
     foldM addChild (mempty, mempty) (childElements e)
 
-  if resourceCount == Map.size embeddedResources
+  if all (== Map.size embeddedResources) resourceCount
     then Right Preset{..}
     else Left "resource count mismatch"
   where

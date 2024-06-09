@@ -25,6 +25,9 @@ specPreset = describe "Preset" $ do
       specify "can parse preset names" $ \Preset{..} ->
         presetName `shouldBe` "e) Basic Shape Grainy"
 
+      specify "can parse preset paintopid" $ \Preset{..} ->
+        presetPaintop `shouldBe` "paintbrush"
+
       specify "can parse preset parameters" $ \Preset{..} -> do
         length presetParams `shouldBe` 225
 

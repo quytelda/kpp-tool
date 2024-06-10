@@ -203,13 +203,13 @@ options = [ Option "h" ["help"]
           , Option "s" ["show"]
             (NoArg $ addAction showPreset)
             "Print a description of a preset."
-          , Option "" ["get-name"]
+          , Option "n" ["get-name"]
             (NoArg $ addAction getName)
             "Print a preset's metadata name."
-          , Option "" ["set-name"]
+          , Option "N" ["set-name"]
             (ReqArg (addAction . setName) "STRING")
             "Change a preset's metadata name."
-          , Option "" ["sync-name"]
+          , Option "y" ["sync-name"]
             (NoArg $ \config -> addAction (syncName config) config)
             "Change a preset's metadata name to match it's filename.\n\
             \For example, 'kpp-tool --sync-name foobar.kpp' will change\n\
@@ -218,29 +218,29 @@ options = [ Option "h" ["help"]
             (ReqArg (addAction . getParam) "KEY")
             "Print the value of a single parameter.\n\
             \If the value is binary, it will be displayed in base-64."
-          , Option "" ["set-param-string"]
+          , Option "S" ["set-param-string"]
             (ReqArg (addAction . setParamString) "KEY=VALUE")
             "Set the value of a string parameter."
-          , Option "" ["set-param-internal"]
+          , Option "P" ["set-param-internal"]
             (ReqArg (addAction . setParamInternal) "KEY=VALUE")
             "Set the value of an internal parameter."
-          , Option "" ["set-param-binary"]
+          , Option "B" ["set-param-binary"]
             (ReqArg (addAction . setParamBinary) "KEY=VALUE")
             "Set the value of binary (bytearray) parameter.\n\
             \VALUE should be encoded in base-64."
-          , Option "e" ["extract"]
+          , Option "r" ["extract"]
             (ReqArg (addAction . extract) "RESOURCE")
             "Extract an embedded resource."
-          , Option "" ["extract-all"]
+          , Option "x" ["extract-all"]
             (NoArg $ addAction extractAll)
             "Extract all embedded resources."
-          , Option "" ["insert"]
+          , Option "R" ["insert"]
             (ReqArg (addAction . insert) "RESOURCE")
             "Insert or update a resource file."
           , Option "c" ["get-icon"]
             (ReqArg (addAction . getIcon) "FILE")
             "Extract a preset's icon image."
-          , Option "I" ["set-icon"]
+          , Option "C" ["set-icon"]
             (ReqArg (addAction . setIcon) "FILE")
             "Change a preset's icon image.\n\
             \FILE must be a PNG file."

@@ -14,6 +14,7 @@ import           Data.Maybe
 import qualified Data.Text                 as T
 import           Data.Text.Encoding
 import qualified Data.Text.IO              as TIO
+import           Data.Version
 import           Prettyprinter
 import           Prettyprinter.Render.Text
 import           System.Console.GetOpt
@@ -262,7 +263,7 @@ main = do
     exitSuccess
 
   when configVersion $ do
-    putStrLn "not implemented yet"
+    putStrLn $ "kpp-tool " <> showVersion kppToolVersion
     exitSuccess
 
   let source = maybe BS.getContents BS.readFile configInput

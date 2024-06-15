@@ -43,6 +43,7 @@ library
     , cryptohash-md5 >=0.11.100
     , digest >=0.0.1.7
     , filepath >=1.4 && <2
+    , mtl >=2.2 && <3
     , prettyprinter >=1.7 && <2
     , text >=1.2.5 && <3
     , xml-conduit >=1.9 && <2
@@ -65,6 +66,7 @@ executable kpp-tool-exe
     , digest >=0.0.1.7
     , filepath >=1.4 && <2
     , kpp-tool
+    , mtl >=2.2 && <3
     , prettyprinter >=1.7 && <2
     , text >=1.2.5 && <3
     , xml-conduit >=1.9 && <2
@@ -93,6 +95,7 @@ test-suite kpp-tool-test
     , filepath >=1.4 && <2
     , hspec >=2.9 && <3
     , kpp-tool
+    , mtl >=2.2 && <3
     , prettyprinter >=1.7 && <2
     , text >=1.2.5 && <3
     , xml-conduit >=1.9 && <2

@@ -196,7 +196,7 @@ x <\> y = x <> line <> y
 (<\\>) :: Doc ann -> Doc ann -> Doc ann
 x <\\> y = x <> line <> line <> y
 
--- | A `Preset` represents a Krita brush preset, including it's
+-- | A `Preset` represents a Krita brush preset, including its
 -- settings and any embedded resources.
 data Preset = Preset
   { presetVersion     :: !BS.ByteString
@@ -211,11 +211,11 @@ data Preset = Preset
 presetIconDimensions :: Preset -> (Word32, Word32)
 presetIconDimensions Preset{..} = runGet getIhdrDimensions $ head presetIcon
 
--- | Format a parameter table.
+-- | Format a table of parameter names and values.
 prettyParams :: Map Text ParamValue -> Doc ann
 prettyParams = concatWith (<\>) . Map.mapWithKey prettyParam
 
--- | Format a resource table.
+-- | Format a table of embedded resource entries.
 prettyResources :: Map Text Resource -> Doc ann
 prettyResources m | Map.null m = "No Resources"
                   | otherwise  = concatWith (<\\>) $ pretty <$> m
@@ -266,7 +266,7 @@ putPreset :: Preset -> Put
 putPreset preset@Preset{..} = do
   -- The metadata chunks must be inserted after the IHDR chunk.
   -- Krita inserts the elements following the IHDR and pHYs chunks,
-  -- but before the IDAT chunks, so this code matches the behavior.
+  -- but before the IDAT chunks, so this code matches that behavior.
   let isFollower bs = BL.isPrefixOf "IDAT" bs || BL.isPrefixOf "IEND" bs
       (pre, post) = break isFollower presetIcon
       versionChunk = makeVersionChunk presetVersion
@@ -349,15 +349,18 @@ prettyByteData bytes
                   then "PNG Image"
                   else "Binary Data"
 
+-- | Pretty printer for parameters.
+--
+-- Displays a simple "key: value" representation.
 prettyParam :: Text -> ParamValue -> Doc ann
 prettyParam key val = pretty key <> ":" <+> pretty val
 
 -- | `ParamValue` represents the value of a preset parameter.
 --
 -- Parameter values have an associated type which can be:
---   * "string" (for textual data)
---   * "internal" (no specific QVariant wrapper)
---   * "bytearray" (for binary data encoded in base64)
+--   - "string" (for textual data)
+--   - "internal" (no specific QVariant wrapper?)
+--   - "bytearray" (for binary data encoded in base64)
 data ParamValue = String   !Text
                 | Internal !Text
                 | Binary   !BS.ByteString
@@ -440,6 +443,8 @@ renderXmlResource Resource{..} =
                                        ]
   in Element{..}
 
+-- | Parse a @<resources>@ XML element, which should contain a list of
+-- all embedded resources.
 parseXmlResources :: Element -> Either String (Map Text Resource)
 parseXmlResources e@(Element "resources" _ _) = do
   resources <- forM (childElements e) parseXmlResource
@@ -464,6 +469,8 @@ parseXmlPreset presetVersion presetIcon e@(Element "Preset" _ _) = do
   (presetParams, embeddedResources) <- first Map.fromList <$>
     foldM addChild (mempty, mempty) (childElements e)
 
+  -- If an expected resource count is provided we check it for
+  -- accuracy; otherwise we can only assume all resources are present.
   if all (== Map.size embeddedResources) resourceCount
     then Right Preset{..}
     else Left "resource count mismatch"
@@ -473,6 +480,7 @@ parseXmlPreset presetVersion presetIcon e@(Element "Preset" _ _) = do
       ((\y -> (  xs, y <> ys)) <$> parseXmlResources child)
 parseXmlPreset _ _ _ = Left "expected <Preset> element"
 
+-- | Generate an XML @<Preset>@ element.
 renderXmlPreset :: Preset -> Element
 renderXmlPreset Preset{..} =
   let paramNodes        = renderXmlParams    presetParams
@@ -504,7 +512,7 @@ insertParam :: Text -> ParamValue -> Preset -> Preset
 insertParam key val preset@Preset{..} =
   preset { presetParams = Map.insert key val presetParams }
 
--- | Look up a resource by name.
+-- | Look up a resource by name, i.e. it's @name@ attribute.
 lookupResourceByName :: Text -> Preset -> Maybe Resource
 lookupResourceByName name = Map.lookup name . embeddedResources
 
@@ -533,12 +541,17 @@ setPresetName :: Text -> Preset -> Preset
 setPresetName name preset = preset { presetName = name }
 
 -- | Get a preset's icon image as PNG data.
+--
+-- This icon will not contain any of the preset metadata and is just a
+-- regular PNG file.
 getPresetIcon :: Preset -> ByteString
 getPresetIcon Preset{..} = runPut $ putMagicString *> traverse_ put (RegularChunk <$> presetIcon)
 
 -- | Change a preset's icon image.
 --
--- The new icon is passed in the form of PNG data.
+-- The new icon is passed in the form of PNG data. In the case the PNG
+-- is a Krita preset, we strip out any existing preset metadata, since
+-- we will be inserting our own later.
 setPresetIcon :: ByteString -> Preset -> Either String Preset
 setPresetIcon pngData preset =
   case runGetOrFail (getMagicString *> some getChunk) pngData of

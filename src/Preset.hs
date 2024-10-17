@@ -21,6 +21,7 @@ module Preset
   , setPresetName
   , getPresetIcon
   , setPresetIcon
+  , cleanupTextures
   ) where
 
 import           Codec.Compression.Zlib
@@ -569,3 +570,15 @@ setPresetIcon pngData preset =
   case runGetOrFail (getMagicString *> some getChunk) pngData of
     Left  (_, _, err)    -> Left err
     Right (_, _, chunks) -> Right $ preset { presetIcon = [c | RegularChunk c <- chunks] }
+
+cleanupTextures :: Preset -> Preset
+cleanupTextures preset =
+  case lookupParam "Texture/Pattern/Enabled" preset of
+    Just (String   "false") -> preset'
+    Just (Internal "false") -> preset'
+    _                       -> preset
+  where
+    isOptionalTextureParam "Texture/Pattern/Enabled" = False
+    isOptionalTextureParam key = "Texture" `T.isPrefixOf` key
+    presetParams' = Map.filterWithKey (const . not . isOptionalTextureParam) (presetParams preset)
+    preset' = preset { presetParams = presetParams' }

@@ -9,6 +9,8 @@ module Preset
   , prettyResources
   , ParamValue(..)
   , Resource(..)
+  , loadPreset
+  , savePreset
   , resourceMD5
   , lookupParam
   , insertParam
@@ -497,6 +499,16 @@ renderXmlPreset Preset{..} =
 ---------------------------
 -- Convenience Functions --
 ---------------------------
+
+loadPreset :: FilePath -> IO Preset
+loadPreset path = do
+  contents <- BL.readFile path
+  return $ decode contents
+
+savePreset :: FilePath -> Preset -> IO ()
+savePreset path preset =
+  let contents = encode preset
+  in BL.writeFile path contents
 
 -- | Calculate the MD5 checksum of a `Resource` displayed in
 -- hexadecimal notation.

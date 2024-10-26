@@ -71,7 +71,7 @@ data RuntimeConfig = RuntimeConfig
   { runHelp       :: Bool
   , runVersion    :: Bool
   , runInputPath  :: Maybe FilePath
-  , runInPlace    :: Bool
+  , runOverwrite  :: Bool
   , runOperations :: [Op]
   }
 
@@ -80,7 +80,7 @@ defaults = RuntimeConfig
   { runHelp       = False
   , runVersion    = False
   , runInputPath  = Nothing
-  , runInPlace    = False
+  , runOverwrite  = False
   , runOperations = []
   }
 
@@ -164,7 +164,7 @@ options = [ Option "h" ["help"]
             (NoArg $ \c -> c { runVersion = True })
             "Display version information."
           , Option "O" ["overwrite"]
-            (NoArg $ \c -> c { runInPlace = True })
+            (NoArg $ \c -> c { runOverwrite = True })
             "Modify a preset file in-place."
 
           -- Operations

@@ -4,10 +4,18 @@
 
 module App where
 
+import           Control.Applicative
+import           Control.Monad.State
 import           Data.Bifunctor
-import qualified Data.Map.Strict as Map
-import           Data.Text       (Text)
-import qualified Data.Text       as T
+import qualified Data.ByteString           as BS
+import qualified Data.ByteString.Lazy      as BL
+import qualified Data.Map.Strict           as Map
+import           Data.Maybe
+import           Data.Text                 (Text)
+import qualified Data.Text                 as T
+import qualified Data.Text.IO              as TIO
+import           Prettyprinter
+import           Prettyprinter.Render.Text
 
 import           Preset
 
@@ -52,3 +60,72 @@ instance (FromArgument k, FromArgument a) => FromArgument (k, a) where
 
 instance (Ord k, FromArgument k, FromArgument a) => FromArgument (Map.Map k a) where
   fromArgument = fmap Map.fromList . traverse fromArgument . commaSep
+
+writeResource :: MonadIO m => Maybe FilePath -> Resource -> m ()
+writeResource mpath Resource{..} = liftIO $ do
+  putStrLn $ "==> Writing resource data to: " <> path
+  BS.writeFile path resourceData
+  where
+    path = fromMaybe (T.unpack resourceFile) mpath
+
+type Op = StateT Preset IO ()
+
+op_info :: Op
+op_info = do
+  preset <- get
+  liftIO $ putDoc (pretty preset)
+  liftIO $ putChar '\n'
+
+op_getName :: Op
+op_getName = do
+  name <- gets presetName
+  liftIO $ TIO.putStrLn name
+
+op_setName :: Text -> Op
+op_setName = modify' . setPresetName
+
+op_getParam :: Text -> Op
+op_getParam key = do
+  preset <- get
+  case lookupParam key preset of
+    Just val -> liftIO $ putDoc (pretty val) *> putChar '\n'
+    Nothing  -> fail $ "no such parameter: " <> T.unpack key
+
+op_setParam :: (Text, ParamValue) -> Op
+op_setParam = modify' . uncurry insertParam
+
+op_extract :: Map.Map Text Text -> Op
+op_extract opts = do
+  let mpath = T.unpack <$> Map.lookup "path" opts
+      lookupResource preset =
+        (Map.lookup "name" opts >>= flip lookupResourceByName preset) <|>
+        (Map.lookup "file" opts >>= flip lookupResourceByFile preset) <|>
+        (Map.lookup "md5"  opts >>= flip lookupResourceByMD5  preset)
+
+  preset <- get
+  case lookupResource preset of
+    Just resource -> writeResource mpath resource
+    Nothing       -> fail "extract: no matching resource found"
+
+op_extractAll :: Op
+op_extractAll = do
+  resources <- gets embeddedResources
+  mapM_ (writeResource Nothing) resources
+
+op_getIcon :: FilePath -> Op
+op_getIcon path = do
+  icon <- gets getPresetIcon
+  liftIO $ BL.writeFile path icon
+
+op_setIcon :: FilePath -> Op
+op_setIcon path = do
+  pngData <- liftIO $ BL.readFile path
+  preset <- get
+  case setPresetIcon pngData preset of
+    Right preset' -> put preset'
+    Left  err     -> fail $ "set-icon: " <> err
+
+op_output :: FilePath -> Op
+op_output path = do
+  preset <- get
+  liftIO $ savePreset path preset

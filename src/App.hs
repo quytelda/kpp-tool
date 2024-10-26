@@ -5,8 +5,10 @@
 module App where
 
 import           Control.Applicative
+import           Control.Monad
 import           Control.Monad.State
 import           Data.Bifunctor
+import           Data.Binary               hiding (get, put)
 import qualified Data.ByteString           as BS
 import qualified Data.ByteString.Lazy      as BL
 import qualified Data.Map.Strict           as Map
@@ -14,8 +16,12 @@ import           Data.Maybe
 import           Data.Text                 (Text)
 import qualified Data.Text                 as T
 import qualified Data.Text.IO              as TIO
+import           Data.Version
 import           Prettyprinter
 import           Prettyprinter.Render.Text
+import           System.Console.GetOpt
+import           System.Exit
+import           System.IO
 
 import           Preset
 
@@ -149,3 +155,47 @@ op_output :: FilePath -> Op
 op_output path = do
   preset <- get
   liftIO $ savePreset path preset
+
+options :: [OptDescr (RuntimeConfig -> RuntimeConfig)]
+options = [ Option "h" ["help"]
+            (NoArg $ \c -> c { runHelp = True })
+            "Display help and usage information."
+          , Option "v" ["version"]
+            (NoArg $ \c -> c { runVersion = True })
+            "Display version information."
+          , Option "O" ["overwrite"]
+            (NoArg $ \c -> c { runInPlace = True })
+            "Modify a preset file in-place."
+
+          -- Operations
+          , Option "o" ["output"]
+            (ReqArg (addOperation . op_output . fromArgument_) "PATH")
+            "Write preset to PATH"
+          , Option "i" ["info"]
+            (NoArg  (addOperation op_info))
+            "Show preset info"
+          , Option "n" ["get-name"]
+            (NoArg  (addOperation op_getName))
+            "Show preset name"
+          , Option "N" ["set-name"]
+            (ReqArg (addOperation . op_setName . fromArgument_) "STRING")
+            "Set name"
+          , Option "p" ["get-param"]
+            (ReqArg (addOperation . op_getParam . fromArgument_) "KEY")
+            "Get param"
+          , Option "P" ["set-param"]
+            (ReqArg (addOperation . op_setParam . fromArgument_) "KEY=TYPE:VALUE")
+            "Set param"
+          , Option "x" ["extract"]
+            (ReqArg (addOperation . op_extract . fromArgument_) "KEY=VALUE[,...]")
+            "Extract a resource"
+          , Option "X" ["extract-all"]
+            (NoArg  (addOperation op_extractAll))
+            "Extract all resources"
+          , Option "c" ["get-icon"]
+            (ReqArg (addOperation . op_getIcon . fromArgument_) "PATH")
+            "Extract PNG icon"
+          , Option "C" ["set-icon"]
+            (ReqArg (addOperation . op_setIcon . fromArgument_) "PATH")
+            "Set PNG icon"
+          ]

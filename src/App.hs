@@ -156,6 +156,12 @@ op_output path = do
   preset <- get
   liftIO $ savePreset path preset
 
+op_syncName :: RuntimeConfig -> Op
+op_syncName RuntimeConfig{..} =
+  case runInputPath of
+    Just path -> op_setName (T.pack path)
+    Nothing   -> error "--sync-name requires an input path"
+
 options :: [OptDescr (RuntimeConfig -> RuntimeConfig)]
 options = [ Option "h" ["help"]
             (NoArg $ \c -> c { runHelp = True })
@@ -180,6 +186,9 @@ options = [ Option "h" ["help"]
           , Option "N" ["set-name"]
             (ReqArg (addOperation . op_setName . fromArgument_) "STRING")
             "Set name"
+          , Option "S" ["sync-name"]
+            (NoArg $ \rc -> addOperation (op_syncName rc) rc)
+            "Sync name"
           , Option "p" ["get-param"]
             (ReqArg (addOperation . op_getParam . fromArgument_) "KEY")
             "Get param"

@@ -61,6 +61,26 @@ instance (FromArgument k, FromArgument a) => FromArgument (k, a) where
 instance (Ord k, FromArgument k, FromArgument a) => FromArgument (Map.Map k a) where
   fromArgument = fmap Map.fromList . traverse fromArgument . commaSep
 
+data RuntimeConfig = RuntimeConfig
+  { runHelp       :: Bool
+  , runVersion    :: Bool
+  , runInputPath  :: Maybe FilePath
+  , runInPlace    :: Bool
+  , runOperations :: [Op]
+  }
+
+defaults :: RuntimeConfig
+defaults = RuntimeConfig
+  { runHelp       = False
+  , runVersion    = False
+  , runInputPath  = Nothing
+  , runInPlace    = False
+  , runOperations = []
+  }
+
+addOperation :: Op -> RuntimeConfig -> RuntimeConfig
+addOperation op config@RuntimeConfig{..} = config { runOperations = op : runOperations }
+
 writeResource :: MonadIO m => Maybe FilePath -> Resource -> m ()
 writeResource mpath Resource{..} = liftIO $ do
   putStrLn $ "==> Writing resource data to: " <> path

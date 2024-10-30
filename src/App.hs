@@ -227,3 +227,34 @@ options = [ Option "h" ["help"]
             (ReqArg (addOperation . op_setIcon . fromArgument_) "PATH")
             "Set PNG icon"
           ]
+
+start :: [String] -> IO ()
+start args = do
+  let (flags, posArgs, errs) = getOpt RequireOrder options args
+
+  -- if parsing CLI arguments failed
+  unless (null errs) $ do
+    hPutStr stderr $ unlines errs
+    exitFailure
+
+  let RuntimeConfig{..} = foldr (.) id flags $
+        defaults { runInputPath = listToMaybe posArgs }
+
+  when runHelp $ do
+    putStrLn $ usageInfo "kpp-tool" options
+    exitSuccess
+
+  when runVersion $ do
+    putStrLn $ "kpp-tool " <> showVersion kppToolVersion
+    exitSuccess
+
+  let source  = maybe BS.getContents BS.readFile runInputPath
+      parse   = pure . decode . BL.fromStrict
+      process = execStateT (sequence_ runOperations)
+      render  = pure . encode
+      sink    = \bytes -> when runOverwrite $
+        case runInputPath of
+          Just path -> BL.writeFile path (encode bytes)
+          Nothing   -> error "missing input path"
+
+  source >>= parse >>= process >>= render >>= sink

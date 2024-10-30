@@ -67,7 +67,7 @@ instance (FromArgument k, FromArgument a) => FromArgument (k, a) where
 instance (Ord k, FromArgument k, FromArgument a) => FromArgument (Map.Map k a) where
   fromArgument = fmap Map.fromList . traverse fromArgument . commaSep
 
-data RuntimeConfig = RuntimeConfig
+data RunConfig = RunConfig
   { runHelp       :: Bool
   , runVersion    :: Bool
   , runInputPath  :: Maybe FilePath
@@ -75,8 +75,8 @@ data RuntimeConfig = RuntimeConfig
   , runOperations :: [Op]
   }
 
-defaults :: RuntimeConfig
-defaults = RuntimeConfig
+defaults :: RunConfig
+defaults = RunConfig
   { runHelp       = False
   , runVersion    = False
   , runInputPath  = Nothing
@@ -84,8 +84,8 @@ defaults = RuntimeConfig
   , runOperations = []
   }
 
-addOperation :: Op -> RuntimeConfig -> RuntimeConfig
-addOperation op config@RuntimeConfig{..} = config { runOperations = op : runOperations }
+addOperation :: Op -> RunConfig -> RunConfig
+addOperation op config@RunConfig{..} = config { runOperations = op : runOperations }
 
 writeResource :: MonadIO m => Maybe FilePath -> Resource -> m ()
 writeResource mpath Resource{..} = liftIO $ do
@@ -172,13 +172,14 @@ op_output path = do
   preset <- get
   liftIO $ savePreset path preset
 
-op_syncName :: RuntimeConfig -> Op
-op_syncName RuntimeConfig{..} =
+op_syncName :: RunConfig -> Op
+op_syncName RunConfig{..} =
   case runInputPath of
     Just path -> op_setName (T.pack path)
     Nothing   -> error "--sync-name requires an input path"
 
-options :: [OptDescr (RuntimeConfig -> RuntimeConfig)]
+-- | Command Line Options
+options :: [OptDescr (RunConfig -> RunConfig)]
 options = [ Option "h" ["help"]
             (NoArg $ \c -> c { runHelp = True })
             "Display help and usage information."
@@ -237,7 +238,7 @@ start args = do
     hPutStr stderr $ unlines errs
     exitFailure
 
-  let RuntimeConfig{..} = foldr (.) id flags $
+  let RunConfig{..} = foldr (.) id flags $
         defaults { runInputPath = listToMaybe posArgs }
 
   when runHelp $ do

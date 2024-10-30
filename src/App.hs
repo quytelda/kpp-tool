@@ -56,7 +56,7 @@ instance FromArgument ParamValue where
   fromArgument arg = case breakOn ':' arg of
     Just ("string",   val) -> Right $ String (T.pack val)
     Just ("internal", val) -> Right $ Internal (T.pack val)
-    Just ("binary",   val) -> Right $ Binary undefined
+    Just ("binary",   val) -> Binary <$> decodeBase64 (T.pack val)
     _                      -> Left "expected TYPE:VALUE"
 
 instance (FromArgument k, FromArgument a) => FromArgument (k, a) where

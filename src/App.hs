@@ -138,6 +138,22 @@ op_extractAll = do
   resources <- gets embeddedResources
   mapM_ (writeResource Nothing) resources
 
+op_embed :: Map.Map Text Text -> Op
+op_embed opts = do
+  preset <- get
+
+  -- TODO: This can probably be simplified by using a second internal
+  -- "do" block and constructing the Resource using RecordWildCards.
+  rData <- liftIO $ traverse BS.readFile (T.unpack <$> rPath)
+  case Resource <$> rName <*> rFile <*> rType <*> rData of
+    Just resource -> put $ insertResource resource preset
+    Nothing       -> fail "insert: invalid resource definition"
+  where
+    rPath = Map.lookup "path" opts <|> Map.lookup "file" opts
+    rType = Map.lookup "type" opts
+    rName = Map.lookup "name" opts <|> rPath
+    rFile = Map.lookup "file" opts <|> rPath
+
 op_getIcon :: FilePath -> Op
 op_getIcon path = do
   icon <- gets getPresetIcon
@@ -201,6 +217,9 @@ options = [ Option "h" ["help"]
           , Option "X" ["extract-all"]
             (NoArg  (addOperation op_extractAll))
             "Extract all resources"
+          , Option "e" ["embed"]
+            (ReqArg (addOperation . op_embed . fromArgument_) "KEY=VALUE[,...]")
+            "Insert a resource"
           , Option "c" ["get-icon"]
             (ReqArg (addOperation . op_getIcon . fromArgument_) "PATH")
             "Extract PNG icon"

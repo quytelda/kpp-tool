@@ -34,7 +34,7 @@ breakOn c = go []
 
 commaSep :: String -> [String]
 commaSep [] = []
-commaSep xs = uncurry (:) . second commaSep . break (== ',') $ xs
+commaSep xs = uncurry (:) . second (commaSep . drop 1) . break (== ',') $ xs
 
 -- | FromArgument is a class for types that can be parsed from a
 -- string argument to a CLI option, e.g. --some-flag=<ARG>.

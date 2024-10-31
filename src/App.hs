@@ -193,40 +193,46 @@ options = [ Option "h" ["help"]
           -- Operations
           , Option "o" ["output"]
             (ReqArg (addOperation . op_output . fromArgument_) "PATH")
-            "Write preset to PATH"
+            "Write preset data to PATH."
           , Option "i" ["info"]
             (NoArg  (addOperation op_info))
-            "Show preset info"
+            "Print a description of a preset."
           , Option "n" ["get-name"]
             (NoArg  (addOperation op_getName))
-            "Show preset name"
+            "Print a preset's metadata name."
           , Option "N" ["set-name"]
             (ReqArg (addOperation . op_setName . fromArgument_) "STRING")
-            "Set name"
+            "Change a preset's metadata name."
           , Option "S" ["sync-name"]
             (NoArg $ \rc -> addOperation (op_syncName rc) rc)
-            "Sync name"
+            "Change a preset's metadata name to match it's filename.\n\
+            \For example, 'kpp-tool --sync-name foobar.kpp' will change\n\
+            \the preset's name to \"foobar\"."
           , Option "p" ["get-param"]
             (ReqArg (addOperation . op_getParam . fromArgument_) "KEY")
-            "Get param"
+            "Print the value of a single parameter.\n\
+            \If the value is binary, it will be displayed in base-64."
           , Option "P" ["set-param"]
             (ReqArg (addOperation . op_setParam . fromArgument_) "KEY=TYPE:VALUE")
-            "Set param"
+            "Set the value of a parameter.\n\
+            \TYPE can be 'string', 'internal', or 'binary'.\n\
+            \For binary parameters, VALUE should be encoded in base-64."
           , Option "x" ["extract"]
             (ReqArg (addOperation . op_extract . fromArgument_) "KEY=VALUE[,...]")
-            "Extract a resource"
+            "Extract an embedded resource."
           , Option "X" ["extract-all"]
             (NoArg  (addOperation op_extractAll))
-            "Extract all resources"
+            "Extract all embedded resources."
           , Option "e" ["embed"]
             (ReqArg (addOperation . op_embed . fromArgument_) "KEY=VALUE[,...]")
-            "Insert a resource"
+            "Insert or update a resource file."
           , Option "c" ["get-icon"]
             (ReqArg (addOperation . op_getIcon . fromArgument_) "PATH")
-            "Extract PNG icon"
+            "Extract a preset's PNG icon image."
           , Option "C" ["set-icon"]
             (ReqArg (addOperation . op_setIcon . fromArgument_) "PATH")
-            "Set PNG icon"
+            "Change a preset's icon image.\n\
+            \FILE must be a PNG file."
           ]
 
 start :: [String] -> IO ()

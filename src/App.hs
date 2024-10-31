@@ -256,6 +256,6 @@ start args = do
       sink    = \bytes -> when runOverwrite $
         case runInputPath of
           Just path -> BL.writeFile path (encode bytes)
-          Nothing   -> error "missing input path"
+          Nothing   -> BL.putStr bytes
 
   source >>= parse >>= process >>= render >>= sink

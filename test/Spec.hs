@@ -17,6 +17,9 @@ import           Preset
 path_basicEllipse :: FilePath
 path_basicEllipse = "kpp/basic-ellipse.kpp"
 
+path_basicShapeGrainy :: FilePath
+path_basicShapeGrainy = "kpp/basic-shape-grainy.kpp"
+
 main :: IO ()
 main = do
   hspec specPreset
@@ -99,7 +102,7 @@ specApp :: Spec
 specApp = do
   describe "App" $ do
     describe "start" $ do
-      it "outputs to file" $ do
+      it "can save presets to file" $ do
         start ["--output=out.kpp", path_basicEllipse]
 
         preset1 <- loadPreset path_basicEllipse
@@ -107,21 +110,27 @@ specApp = do
 
         preset1 `shouldBe` preset2
 
-      it "sets the preset name" $ do
-        start ["--set-name=new_name", "--output=out.kpp", path_basicEllipse]
+      it "can change preset names" $ do
+        start [ "--set-name", "new_name"
+              , "--output", "out.kpp"
+              , path_basicEllipse
+              ]
+
         Preset{..} <- loadPreset "out.kpp"
         presetName `shouldBe` "new_name"
 
-      it "sets parameter values" $ do
+      it "can set parameter values" $ do
         start [ "--set-param", "EraserMode=string:true"
               , "--set-param", "ExampleParam=binary:ZXhhbXBsZQ=="
-              , "--output=out.kpp", path_basicEllipse]
+              , "--output", "out.kpp"
+              , path_basicEllipse
+              ]
 
         preset <- loadPreset "out.kpp"
         lookupParam "EraserMode"   preset `shouldBe` Just (String "true")
         lookupParam "ExampleParam" preset `shouldBe` Just (Binary "example")
 
-      it "extracts resources" $ do
+      it "can extract embedded resources" $ do
         start [ "--extract", "name=egg"
               , "--extract", "md5=3ca1bcf8dc1bc90b5a788d89793d2a89"
               , "kpp/basic-shape-grainy.kpp"]
@@ -135,13 +144,13 @@ specApp = do
       it "extracts all resources" $ do
         pending
 
-      it "extracts preset icons" $ do
+      it "can extract a preset icon" $ do
         start [ "--get-icon", "out.png", path_basicEllipse ]
 
         icon <- BL.readFile "out.png"
         MD5.hashlazy icon `shouldBe` "\156\170\178\231n\230\\Fx\153 \235)\173\155N"
 
-      it "changes preset icons" $ do
+      it "can set a preset icon" $ do
         start [ "--set-icon", "egg.png"
               , "--output", "out.kpp"
               , path_basicEllipse]
@@ -169,7 +178,7 @@ specApp = do
       it "can parse binary ParamValue arguments" $ do
         fromArgument "binary:ZXhhbXBsZQ==" `shouldBe` Right (Binary "example")
 
-      it "can parse key=value arguments" $ do
+      it "can parse KEY=VALUE arguments" $ do
         fromArgument "key=value" `shouldBe` Right ("key" :: T.Text, "value" :: T.Text)
 
       it "can parse dictionary arguments" $ do

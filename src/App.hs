@@ -41,6 +41,7 @@ commaSep xs = uncurry (:) . second (commaSep . drop 1) . break (== ',') $ xs
 class FromArgument a where
   fromArgument :: String -> Either String a
 
+-- | The same as `fromArgument` but calls `error` on failure.
 fromArgument_ :: FromArgument a => String -> a
 fromArgument_ s = case fromArgument s of
   Right v  -> v
@@ -87,6 +88,8 @@ defaults = RunConfig
 addOperation :: Op -> RunConfig -> RunConfig
 addOperation op config@RunConfig{..} = config { runOperations = op : runOperations }
 
+-- | Save a `Resource` to file. An optional output path can be
+-- provided; otherwise, the resource's filename property is used.
 writeResource :: MonadIO m => Maybe FilePath -> Resource -> m ()
 writeResource mpath Resource{..} = liftIO $ do
   putStrLn $ "==> Writing resource data to: " <> path

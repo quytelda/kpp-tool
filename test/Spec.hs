@@ -1,17 +1,26 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards   #-}
 
+import qualified Crypto.Hash.MD5      as MD5
 import           Data.Binary
 import qualified Data.ByteString.Lazy as BL
 import           Data.Int             (Int64)
 import qualified Data.Map.Strict      as Map
 import           Data.Maybe
+import qualified Data.Text            as T
+import           System.Exit
 import           Test.Hspec
 
+import           App
 import           Preset
 
+path_basicEllipse :: FilePath
+path_basicEllipse = "kpp/basic-ellipse.kpp"
+
 main :: IO ()
-main = hspec specPreset
+main = do
+  hspec specPreset
+  hspec specApp
 
 pngIHDRChunkSize :: Int64
 pngIHDRChunkSize = 17
@@ -85,3 +94,85 @@ specPreset = describe "Preset" $ do
         height `shouldBe` 200
 
         iendChunk `shouldBe` "IEND"
+
+specApp :: Spec
+specApp = do
+  describe "App" $ do
+    describe "start" $ do
+      it "outputs to file" $ do
+        start ["--output=out.kpp", path_basicEllipse]
+
+        preset1 <- loadPreset path_basicEllipse
+        preset2 <- loadPreset "out.kpp"
+
+        preset1 `shouldBe` preset2
+
+      it "sets the preset name" $ do
+        start ["--set-name=new_name", "--output=out.kpp", path_basicEllipse]
+        Preset{..} <- loadPreset "out.kpp"
+        presetName `shouldBe` "new_name"
+
+      it "sets parameter values" $ do
+        start [ "--set-param", "EraserMode=string:true"
+              , "--set-param", "ExampleParam=binary:ZXhhbXBsZQ=="
+              , "--output=out.kpp", path_basicEllipse]
+
+        preset <- loadPreset "out.kpp"
+        lookupParam "EraserMode"   preset `shouldBe` Just (String "true")
+        lookupParam "ExampleParam" preset `shouldBe` Just (Binary "example")
+
+      it "extracts resources" $ do
+        start [ "--extract", "name=egg"
+              , "--extract", "md5=3ca1bcf8dc1bc90b5a788d89793d2a89"
+              , "kpp/basic-shape-grainy.kpp"]
+
+        egg       <- BL.readFile "egg.png"
+        hourglass <- BL.readFile "hourglass.png"
+
+        MD5.hashlazy egg       `shouldBe` "\184w\201>\254E@\137\DC3\EOT\174\&6b\233\206X"
+        MD5.hashlazy hourglass `shouldBe` "<\161\188\248\220\ESC\201\vZx\141\137y=*\137"
+
+      it "extracts all resources" $ do
+        pending
+
+      it "extracts preset icons" $ do
+        start [ "--get-icon", "out.png", path_basicEllipse ]
+
+        icon <- BL.readFile "out.png"
+        MD5.hashlazy icon `shouldBe` "\156\170\178\231n\230\\Fx\153 \235)\173\155N"
+
+      it "changes preset icons" $ do
+        start [ "--set-icon", "egg.png"
+              , "--output", "out.kpp"
+              , path_basicEllipse]
+
+        egg <- BL.readFile "egg.png"
+        preset <- loadPreset "out.kpp"
+        getPresetIcon preset `shouldBe` egg
+
+      -- it "nothing" $ do
+      --   start ["--sldkjfsdl"] `shouldThrow` (== ExitFailure 1)
+
+    describe "FromArgument" $ do
+      it "can parse String arguments" $ do
+        fromArgument "example" `shouldBe` Right ("example" :: String)
+
+      it "can parse Text arguments" $ do
+        fromArgument "example" `shouldBe` Right ("example" :: T.Text)
+
+      it "can parse string ParamValue arguments" $ do
+        fromArgument "string:example" `shouldBe` Right (String "example")
+
+      it "can parse internal ParamValue arguments" $ do
+        fromArgument "internal:example" `shouldBe` Right (Internal "example")
+
+      it "can parse binary ParamValue arguments" $ do
+        fromArgument "binary:ZXhhbXBsZQ==" `shouldBe` Right (Binary "example")
+
+      it "can parse key=value arguments" $ do
+        fromArgument "key=value" `shouldBe` Right ("key" :: T.Text, "value" :: T.Text)
+
+      it "can parse dictionary arguments" $ do
+        fromArgument "key1=value1,key2=value2" `shouldBe` Right (Map.fromList [ ("key1", "value1")
+                                                                              , ("key2", "value2")
+                                                                              ] :: Map.Map T.Text T.Text)

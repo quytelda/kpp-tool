@@ -238,18 +238,8 @@ options = [ Option "h" ["help"]
             \FILE must be a PNG file."
           ]
 
-start :: [String] -> IO ()
-start args = do
-  let (flags, posArgs, errs) = getOpt RequireOrder options args
-
-  -- if parsing CLI arguments failed
-  unless (null errs) $ do
-    hPutStr stderr $ unlines errs
-    exitFailure
-
-  let RunConfig{..} = foldr (.) id flags $
-        defaults { runInputPath = listToMaybe posArgs }
-
+run :: RunConfig -> IO ()
+run RunConfig{..} = do
   when runHelp $ do
     putStrLn $ usageInfo "kpp-tool" options
     exitSuccess
@@ -262,9 +252,22 @@ start args = do
       parse   = pure . decode . BL.fromStrict
       process = execStateT (sequence_ runOperations)
       render  = pure . encode
-      sink    = \bytes -> when runOverwrite $
-        case runInputPath of
-          Just path -> BL.writeFile path (encode bytes)
-          Nothing   -> BL.putStr bytes
+      sink    = when runOverwrite . maybe BL.putStr BL.writeFile runInputPath
 
   source >>= parse >>= process >>= render >>= sink
+
+-- | `start` is the primary entrypoint of the application, intended to
+-- be called by `main`. It expects a list of command line arguments.
+start :: [String] -> IO ()
+start args = do
+  let (flags, posArgs, errs) = getOpt RequireOrder options args
+
+  -- if parsing CLI arguments failed
+  unless (null errs) $ do
+    hPutStr stderr $ unlines errs
+    exitFailure
+
+  let config = foldr (.) id flags $
+        defaults { runInputPath = listToMaybe posArgs }
+
+  run config

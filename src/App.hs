@@ -21,6 +21,7 @@ import           Prettyprinter
 import           Prettyprinter.Render.Text
 import           System.Console.GetOpt
 import           System.Exit
+import           System.FilePath
 import           System.IO
 
 import           Preset
@@ -178,7 +179,7 @@ op_output path = do
 op_syncName :: RunConfig -> Op
 op_syncName RunConfig{..} =
   case runInputPath of
-    Just path -> op_setName (T.pack path)
+    Just path -> op_setName $ T.pack (takeBaseName path)
     Nothing   -> error "--sync-name requires an input path"
 
 -- | Command Line Options

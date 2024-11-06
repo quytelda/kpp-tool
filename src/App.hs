@@ -93,7 +93,11 @@ addOperation op config@RunConfig{..} = config { runOperations = op : runOperatio
 -- provided; otherwise, the resource's filename property is used.
 writeResource :: MonadIO m => Maybe FilePath -> Resource -> m ()
 writeResource mpath Resource{..} = liftIO $ do
-  putStrLn $ "==> Writing resource data to: " <> path
+  -- If no output path was specified, we inform the user where the
+  -- output will be written.
+  when (isNothing mpath) $
+    putStrLn $ "Writing resource data to: " <> path
+
   BS.writeFile path resourceData
   where
     path = fromMaybe (T.unpack resourceFile) mpath

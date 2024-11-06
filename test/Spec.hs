@@ -1,24 +1,49 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards   #-}
 
+import           Control.Exception
 import           Data.Binary
 import qualified Data.ByteString.Lazy as BL
 import           Data.Int             (Int64)
 import qualified Data.Map.Strict      as Map
 import           Data.Maybe
+import           System.Directory
 import           Test.Hspec
 
 import           Preset
 
-main :: IO ()
-main = hspec specPreset
-
 pngIHDRChunkSize :: Int64
 pngIHDRChunkSize = 17
 
-specPreset :: Spec
-specPreset = describe "Preset" $ do
-    before (decode <$> BL.readFile "kpp/basic-shape-grainy.kpp") $ do
+-- | This is the directory where temporary test files will be created
+-- during unit tests. It is automatically created when tests are run,
+-- then deleted after the tests complete.
+testDir :: FilePath
+testDir = "test.tmp"
+
+withTestDir :: IO () -> IO ()
+withTestDir = bracket_
+  (createDirectory testDir)
+  (removeDirectoryRecursive testDir)
+
+----------------------------
+-- Sample Files for Tests --
+----------------------------
+
+path_basicShapeGrainy :: FilePath
+path_basicShapeGrainy = "kpp/basic-shape-grainy.kpp"
+
+main :: IO ()
+main = withTestDir $ do
+  hspec spec_Preset
+
+-----------
+-- Tests --
+-----------
+
+spec_Preset :: Spec
+spec_Preset = describe "Preset" $ do
+    before (decode <$> BL.readFile path_basicShapeGrainy) $ do
       specify "can parse preset version" $ \Preset{..} ->
         presetVersion `shouldBe` "5.0"
 

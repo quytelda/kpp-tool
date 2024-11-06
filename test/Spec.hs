@@ -2,13 +2,16 @@
 {-# LANGUAGE RecordWildCards   #-}
 
 import           Control.Exception
+import qualified Crypto.Hash.MD5      as MD5
 import           Data.Binary
+import qualified Data.ByteString      as BS
 import qualified Data.ByteString.Lazy as BL
 import           Data.Int             (Int64)
 import qualified Data.Map.Strict      as Map
 import           Data.Maybe
 import qualified Data.Text            as T
 import           System.Directory
+import           System.FilePath
 import           Test.Hspec
 
 import           App
@@ -32,8 +35,14 @@ withTestDir = bracket_
 -- Sample Files for Tests --
 ----------------------------
 
+path_basicEllipse :: FilePath
+path_basicEllipse = "kpp/basic-ellipse.kpp"
+
 path_basicShapeGrainy :: FilePath
 path_basicShapeGrainy = "kpp/basic-shape-grainy.kpp"
+
+path_scribble :: FilePath
+path_scribble = "png/scribble.png"
 
 main :: IO ()
 main = withTestDir $ do
@@ -48,6 +57,7 @@ spec_App :: Spec
 spec_App = do
   describe "App" $ do
     spec_FromArgument
+    spec_start
 
 spec_Preset :: Spec
 spec_Preset = describe "Preset" $ do
@@ -143,3 +153,114 @@ spec_FromArgument = describe "FromArgument" $ do
     fromArgument "key1=value1,key2=value2" `shouldBe` Right (Map.fromList [ ("key1", "value1")
                                                                           , ("key2", "value2")
                                                                           ] :: Map.Map T.Text T.Text)
+
+spec_start :: Spec
+spec_start = do
+  describe "start" $ do
+    it "runs operations in order" $ do
+      let file1 = testDir </> "order1.kpp"
+          file2 = testDir </> "order2.kpp"
+          file3 = testDir </> "order3.kpp"
+      start [ "--set-param", "example=string:1"
+            , "--output", file1
+            , "--set-param", "example=string:2"
+            , "--output", file2
+            , "--set-param", "example=string:3"
+            , "--output", file3
+            , path_basicEllipse
+            ]
+
+      preset1 <- loadPreset file1
+      preset2 <- loadPreset file2
+      preset3 <- loadPreset file3
+
+      lookupParam "example" preset1 `shouldBe` Just (String "1")
+      lookupParam "example" preset2 `shouldBe` Just (String "2")
+      lookupParam "example" preset3 `shouldBe` Just (String "3")
+
+    it "can save presets to file" $ do
+      let file = testDir </> "save_presets.kpp"
+      start [ "--output", file
+            , path_basicEllipse
+            ]
+
+      preset1 <- loadPreset path_basicEllipse
+      preset2 <- loadPreset file
+
+      preset1 `shouldBe` preset2
+
+    it "can set preset names" $ do
+      let file = testDir </> "set_name.kpp"
+      start [ "--set-name", "new_name"
+            , "--output", file
+            , path_basicEllipse
+            ]
+
+      Preset{..} <- loadPreset file
+      presetName `shouldBe` "new_name"
+
+    it "can synchronize preset names with filenames" $ do
+      let file = testDir </> "sync_name.kpp"
+      start [ "--sync-name"
+            , "--output", file
+            , path_basicEllipse
+            ]
+
+      Preset{..} <- loadPreset file
+      presetName `shouldBe` "basic-ellipse"
+
+    it "can set parameter values" $ do
+      let file = testDir </> "set_param.kpp"
+      start [ "--set-param", "EraserMode=string:true"
+            , "--set-param", "ExampleParam=binary:ZXhhbXBsZQ=="
+            , "--output", file
+            , path_basicEllipse
+            ]
+
+      preset <- loadPreset file
+      lookupParam "EraserMode"   preset `shouldBe` Just (String "true")
+      lookupParam "ExampleParam" preset `shouldBe` Just (Binary "example")
+
+    it "can extract embedded resources" $ do
+      let eggFile       = testDir </> "extract_egg.png"
+          hourglassFile = testDir </> "extract_hourglass.png"
+      start [ "--extract", "name=egg,path=" <> eggFile
+            , "--extract", "md5=3ca1bcf8dc1bc90b5a788d89793d2a89,path=" <> hourglassFile
+            , path_basicShapeGrainy]
+
+      egg       <- BL.readFile eggFile
+      hourglass <- BL.readFile hourglassFile
+
+      MD5.hashlazy egg       `shouldBe` "\184w\201>\254E@\137\DC3\EOT\174\&6b\233\206X"
+      MD5.hashlazy hourglass `shouldBe` "<\161\188\248\220\ESC\201\vZx\141\137y=*\137"
+
+    it "can extract all resources" $ do
+      pending
+
+    it "can embed resources" $ do
+      let file = testDir </> "embed_resource.kpp"
+      start [ "--embed", "name=scribble,type=brushes,file=scribble.png,path=" <> path_scribble
+            , "--output", file
+            , path_basicEllipse ]
+
+      preset <- loadPreset file
+      scribble <- Resource "scribble" "scribble.png" "brushes" <$> BS.readFile path_scribble
+      lookupResourceByName "scribble" preset `shouldBe` Just scribble
+
+    it "can extract preset icons" $ do
+      let file = testDir </> "extract_icon.png"
+      start [ "--get-icon", file
+            , path_basicEllipse ]
+
+      icon <- BL.readFile file
+      MD5.hashlazy icon `shouldBe` "\156\170\178\231n\230\\Fx\153 \235)\173\155N"
+
+    it "can set preset icons" $ do
+      let file = testDir </> "set_icon.kpp"
+      start [ "--set-icon", path_scribble
+            , "--output", file
+            , path_basicEllipse]
+
+      egg <- BL.readFile path_scribble
+      preset <- loadPreset file
+      getPresetIcon preset `shouldBe` egg

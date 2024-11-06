@@ -84,22 +84,24 @@ defaults = RunConfig
   , runOperations = []
   }
 
-data RunMode a = HelpMode | VersionMode | RunMode a
+data RunMode = HelpMode
+             | VersionMode
+             | RunMode RunConfig
 
-instance Functor RunMode where
-  fmap f (RunMode x) = RunMode (f x)
-  fmap _ HelpMode    = HelpMode
-  fmap _ VersionMode = VersionMode
+mapConfig :: (RunConfig -> RunConfig) -> RunMode -> RunMode
+mapConfig f (RunMode x) = RunMode (f x)
+mapConfig _ HelpMode    = HelpMode
+mapConfig _ VersionMode = VersionMode
 
-setHelpMode :: RunMode a -> RunMode a
+setHelpMode :: RunMode -> RunMode
 setHelpMode _ = HelpMode
 
-setVersionMode :: RunMode a -> RunMode a
+setVersionMode :: RunMode -> RunMode
 setVersionMode HelpMode = HelpMode
 setVersionMode _        = VersionMode
 
-addOperation :: Op -> RunMode RunConfig -> RunMode RunConfig
-addOperation op = fmap $ \config@RunConfig{..} ->
+addOperation :: Op -> RunMode -> RunMode
+addOperation op = mapConfig $ \config@RunConfig{..} ->
   config { runOperations = op : runOperations }
 
 -- | Save a `Resource` to file. An optional output path can be
@@ -204,7 +206,7 @@ op_syncName = do
     Nothing   -> error "--sync-name requires an input path"
 
 -- | Command Line Options
-options :: [OptDescr (RunMode RunConfig -> RunMode RunConfig)]
+options :: [OptDescr (RunMode -> RunMode)]
 options = [ Option "h" ["help"]
             (NoArg $ setHelpMode)
             "Display help and usage information."
@@ -212,7 +214,7 @@ options = [ Option "h" ["help"]
             (NoArg $ setVersionMode)
             "Display version information."
           , Option "O" ["overwrite"]
-            (NoArg $ fmap $ \c -> c { runOverwrite = True })
+            (NoArg $ mapConfig $ \c -> c { runOverwrite = True })
             "Modify a preset file in-place."
 
           -- Operations
@@ -260,7 +262,7 @@ options = [ Option "h" ["help"]
             \FILE must be a PNG file."
           ]
 
-run :: RunMode RunConfig -> IO ()
+run :: RunMode -> IO ()
 run HelpMode    = putStrLn $ usageInfo "kpp-tool" options
 run VersionMode = putStrLn $ "kpp-tool " <> showVersion kppToolVersion
 run (RunMode config@RunConfig{..}) = do

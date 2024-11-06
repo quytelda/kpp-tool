@@ -7,9 +7,11 @@ import qualified Data.ByteString.Lazy as BL
 import           Data.Int             (Int64)
 import qualified Data.Map.Strict      as Map
 import           Data.Maybe
+import qualified Data.Text            as T
 import           System.Directory
 import           Test.Hspec
 
+import           App
 import           Preset
 
 pngIHDRChunkSize :: Int64
@@ -36,10 +38,16 @@ path_basicShapeGrainy = "kpp/basic-shape-grainy.kpp"
 main :: IO ()
 main = withTestDir $ do
   hspec spec_Preset
+  hspec spec_App
 
 -----------
 -- Tests --
 -----------
+
+spec_App :: Spec
+spec_App = do
+  describe "App" $ do
+    spec_FromArgument
 
 spec_Preset :: Spec
 spec_Preset = describe "Preset" $ do
@@ -110,3 +118,28 @@ spec_Preset = describe "Preset" $ do
         height `shouldBe` 200
 
         iendChunk `shouldBe` "IEND"
+
+spec_FromArgument :: Spec
+spec_FromArgument = describe "FromArgument" $ do
+  it "can parse String arguments" $ do
+    fromArgument "example" `shouldBe` Right ("example" :: String)
+
+  it "can parse Text arguments" $ do
+    fromArgument "example" `shouldBe` Right ("example" :: T.Text)
+
+  it "can parse string ParamValue arguments" $ do
+    fromArgument "string:example" `shouldBe` Right (String "example")
+
+  it "can parse internal ParamValue arguments" $ do
+    fromArgument "internal:example" `shouldBe` Right (Internal "example")
+
+  it "can parse binary ParamValue arguments" $ do
+    fromArgument "binary:ZXhhbXBsZQ==" `shouldBe` Right (Binary "example")
+
+  it "can parse KEY=VALUE arguments" $ do
+    fromArgument "key=value" `shouldBe` Right ("key" :: T.Text, "value" :: T.Text)
+
+  it "can parse dictionary arguments" $ do
+    fromArgument "key1=value1,key2=value2" `shouldBe` Right (Map.fromList [ ("key1", "value1")
+                                                                          , ("key2", "value2")
+                                                                          ] :: Map.Map T.Text T.Text)

@@ -7,6 +7,7 @@ module App where
 
 import           Control.Applicative
 import           Control.Monad
+import           Control.Monad.Reader
 import           Control.Monad.State
 import           Data.Bifunctor
 import           Data.Binary               hiding (get, put)
@@ -114,7 +115,10 @@ writeResource mpath Resource{..} = liftIO $ do
   where
     path = fromMaybe (T.unpack resourceFile) mpath
 
-type Op = StateT Preset IO ()
+type Op = StateT Preset (ReaderT RunConfig IO) ()
+
+runOp :: Op -> RunConfig -> Preset -> IO Preset
+runOp op = flip $ runReaderT . execStateT op
 
 op_info :: Op
 op_info = do
@@ -192,8 +196,9 @@ op_output path = do
   preset <- get
   liftIO $ savePreset path preset
 
-op_syncName :: RunConfig -> Op
-op_syncName RunConfig{..} =
+op_syncName :: Op
+op_syncName = do
+  RunConfig{..} <- lift ask
   case runInputPath of
     Just path -> op_setName $ T.pack (takeBaseName path)
     Nothing   -> error "--sync-name requires an input path"
@@ -224,9 +229,7 @@ options = [ Option "h" ["help"]
             (ReqArg (addOperation . op_setName . fromArgument_) "STRING")
             "Change a preset's metadata name."
           , Option "S" ["sync-name"]
-            (NoArg $ \case
-                m@(RunMode c) -> addOperation (op_syncName c) m
-                m             -> m)
+            (NoArg (addOperation op_syncName))
             "Change a preset's metadata name to match it's filename.\n\
             \For example, 'kpp-tool --sync-name foobar.kpp' will change\n\
             \the preset's name to \"foobar\"."
@@ -258,12 +261,12 @@ options = [ Option "h" ["help"]
           ]
 
 run :: RunMode RunConfig -> IO ()
-run HelpMode = putStrLn $ usageInfo "kpp-tool" options
+run HelpMode    = putStrLn $ usageInfo "kpp-tool" options
 run VersionMode = putStrLn $ "kpp-tool " <> showVersion kppToolVersion
-run (RunMode RunConfig{..}) = do
+run (RunMode config@RunConfig{..}) = do
   let source  = maybe BS.getContents BS.readFile runInputPath
       parse   = pure . decode . BL.fromStrict
-      process = execStateT (sequence_ runOperations)
+      process = runOp (sequence_ runOperations) config
       render  = pure . encode
       sink    = when runOverwrite . maybe BL.putStr BL.writeFile runInputPath
 

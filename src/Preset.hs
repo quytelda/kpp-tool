@@ -21,7 +21,10 @@ module Preset
   , setPresetName
   , getPresetIcon
   , setPresetIcon
+  , decodeBase16
+  , encodeBase16
   , decodeBase64
+  , encodeBase64
   ) where
 
 import           Codec.Compression.Zlib

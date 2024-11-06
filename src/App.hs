@@ -1,4 +1,5 @@
 {-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE LambdaCase        #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards   #-}
 
@@ -70,24 +71,35 @@ instance (Ord k, FromArgument k, FromArgument a) => FromArgument (Map.Map k a) w
   fromArgument = fmap Map.fromList . traverse fromArgument . commaSep
 
 data RunConfig = RunConfig
-  { runHelp       :: Bool
-  , runVersion    :: Bool
-  , runInputPath  :: Maybe FilePath
+  { runInputPath  :: Maybe FilePath
   , runOverwrite  :: Bool
   , runOperations :: [Op]
   }
 
 defaults :: RunConfig
 defaults = RunConfig
-  { runHelp       = False
-  , runVersion    = False
-  , runInputPath  = Nothing
+  { runInputPath  = Nothing
   , runOverwrite  = False
   , runOperations = []
   }
 
-addOperation :: Op -> RunConfig -> RunConfig
-addOperation op config@RunConfig{..} = config { runOperations = op : runOperations }
+data RunMode a = HelpMode | VersionMode | RunMode a
+
+instance Functor RunMode where
+  fmap f (RunMode x) = RunMode (f x)
+  fmap _ HelpMode    = HelpMode
+  fmap _ VersionMode = VersionMode
+
+setHelpMode :: RunMode a -> RunMode a
+setHelpMode _ = HelpMode
+
+setVersionMode :: RunMode a -> RunMode a
+setVersionMode HelpMode = HelpMode
+setVersionMode _        = VersionMode
+
+addOperation :: Op -> RunMode RunConfig -> RunMode RunConfig
+addOperation op = fmap $ \config@RunConfig{..} ->
+  config { runOperations = op : runOperations }
 
 -- | Save a `Resource` to file. An optional output path can be
 -- provided; otherwise, the resource's filename property is used.
@@ -187,15 +199,15 @@ op_syncName RunConfig{..} =
     Nothing   -> error "--sync-name requires an input path"
 
 -- | Command Line Options
-options :: [OptDescr (RunConfig -> RunConfig)]
+options :: [OptDescr (RunMode RunConfig -> RunMode RunConfig)]
 options = [ Option "h" ["help"]
-            (NoArg $ \c -> c { runHelp = True })
+            (NoArg $ setHelpMode)
             "Display help and usage information."
           , Option "v" ["version"]
-            (NoArg $ \c -> c { runVersion = True })
+            (NoArg $ setVersionMode)
             "Display version information."
           , Option "O" ["overwrite"]
-            (NoArg $ \c -> c { runOverwrite = True })
+            (NoArg $ fmap $ \c -> c { runOverwrite = True })
             "Modify a preset file in-place."
 
           -- Operations
@@ -212,7 +224,9 @@ options = [ Option "h" ["help"]
             (ReqArg (addOperation . op_setName . fromArgument_) "STRING")
             "Change a preset's metadata name."
           , Option "S" ["sync-name"]
-            (NoArg $ \rc -> addOperation (op_syncName rc) rc)
+            (NoArg $ \case
+                m@(RunMode c) -> addOperation (op_syncName c) m
+                m             -> m)
             "Change a preset's metadata name to match it's filename.\n\
             \For example, 'kpp-tool --sync-name foobar.kpp' will change\n\
             \the preset's name to \"foobar\"."
@@ -243,16 +257,10 @@ options = [ Option "h" ["help"]
             \FILE must be a PNG file."
           ]
 
-run :: RunConfig -> IO ()
-run RunConfig{..} = do
-  when runHelp $ do
-    putStrLn $ usageInfo "kpp-tool" options
-    exitSuccess
-
-  when runVersion $ do
-    putStrLn $ "kpp-tool " <> showVersion kppToolVersion
-    exitSuccess
-
+run :: RunMode RunConfig -> IO ()
+run HelpMode = putStrLn $ usageInfo "kpp-tool" options
+run VersionMode = putStrLn $ "kpp-tool " <> showVersion kppToolVersion
+run (RunMode RunConfig{..}) = do
   let source  = maybe BS.getContents BS.readFile runInputPath
       parse   = pure . decode . BL.fromStrict
       process = execStateT (sequence_ runOperations)
@@ -273,6 +281,6 @@ start args = do
     exitFailure
 
   let config = foldr (.) id flags $
-        defaults { runInputPath = listToMaybe posArgs }
+        RunMode defaults { runInputPath = listToMaybe posArgs }
 
   run config

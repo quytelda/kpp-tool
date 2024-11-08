@@ -1,5 +1,4 @@
 {-# LANGUAGE FlexibleInstances #-}
-{-# LANGUAGE LambdaCase        #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards   #-}
 
@@ -106,6 +105,11 @@ addOperation :: Op -> RunMode -> RunMode
 addOperation op = mapConfig $ \config@RunConfig{..} ->
   config { runOperations = op : runOperations }
 
+type Op = StateT Preset (ReaderT RunConfig IO) ()
+
+runOp :: Op -> RunConfig -> Preset -> IO Preset
+runOp op = flip $ runReaderT . execStateT op
+
 -- | Save a `Resource` to file. An optional output path can be
 -- provided; otherwise, the resource's filename property is used.
 writeResource :: Maybe FilePath -> Resource -> Op
@@ -120,11 +124,6 @@ writeResource mpath Resource{..} = do
   liftIO $ BS.writeFile path resourceData
   where
     path = fromMaybe (T.unpack resourceFile) mpath
-
-type Op = StateT Preset (ReaderT RunConfig IO) ()
-
-runOp :: Op -> RunConfig -> Preset -> IO Preset
-runOp op = flip $ runReaderT . execStateT op
 
 op_info :: Op
 op_info = do
@@ -212,11 +211,13 @@ op_syncName = do
 -- | Command Line Options
 options :: [OptDescr (RunMode -> RunMode)]
 options = [ Option "h" ["help"]
-            (NoArg $ setHelpMode)
+            (NoArg setHelpMode)
             "Display help and usage information."
           , Option "v" ["version"]
-            (NoArg $ setVersionMode)
+            (NoArg setVersionMode)
             "Display version information."
+
+          -- Global Options
           , Option "O" ["overwrite"]
             (NoArg $ mapConfig $ \c -> c { runOverwrite = True })
             "Modify a preset file in-place."
@@ -292,7 +293,7 @@ start args = do
     hPutStr stderr $ unlines errs
     exitFailure
 
-  let config = foldr (.) id flags $
+  let settings = foldr (.) id flags $
         RunMode defaults { runInputPath = listToMaybe posArgs }
 
-  run config
+  run settings

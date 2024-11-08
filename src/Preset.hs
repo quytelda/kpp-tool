@@ -185,7 +185,7 @@ makeSettingChunk :: Preset -> Chunk
 makeSettingChunk preset =
   let documentPrologue = Prologue [] Nothing []
       documentEpilogue = []
-      documentRoot     = renderXmlPreset preset
+      documentRoot     = renderXml_Preset preset
       renderSettings   = def { rsUseCDATA = const True }
       xml              = renderLBS renderSettings Document{..}
   in SettingChunk xml
@@ -264,7 +264,7 @@ getPreset = do
       xml     = head settingChunks
 
   either fail pure
-    $ parseXmlPreset version regularChunks
+    $ parseXml_Preset version regularChunks
     $ documentRoot
     $ parseLBS_ def xml
 
@@ -377,8 +377,8 @@ instance Pretty ParamValue where
   pretty (Internal val) = squotes  (pretty val)
   pretty (Binary   val) = brackets (prettyByteData val)
 
-parseXmlParam :: Element -> Either String (Text, ParamValue)
-parseXmlParam e@(Element "param" _ _) = do
+parseXml_param :: Element -> Either String (Text, ParamValue)
+parseXml_param e@(Element "param" _ _) = do
   paramName <- attributeText "name" e
   paramType <- attributeText "type" e
   paramData <- contentText e
@@ -389,10 +389,10 @@ parseXmlParam e@(Element "param" _ _) = do
     "bytearray" -> Binary   <$> decodeBase64 paramData
     _           -> Left $ "unknown param type: " <> show paramType
   return (paramName, paramValue)
-parseXmlParam _ = Left "expected <param> element"
+parseXml_param _ = Left "expected <param> element"
 
-renderXmlParam :: Text -> ParamValue -> Element
-renderXmlParam key val =
+renderXml_param :: Text -> ParamValue -> Element
+renderXml_param key val =
   let (paramType, paramData) = case val of
         String   v -> ("string",    v)
         Internal v -> ("internal",  v)
@@ -404,8 +404,8 @@ renderXmlParam key val =
                                        ]
   in Element{..}
 
-renderXmlParams :: Map Text ParamValue -> [Element]
-renderXmlParams = Map.elems . Map.mapWithKey renderXmlParam
+renderXml_params :: Map Text ParamValue -> [Element]
+renderXml_params = Map.elems . Map.mapWithKey renderXml_param
 
 -- | 'Resource' is a type for embedded resources.
 data Resource = Resource { resourceName :: !Text
@@ -423,8 +423,8 @@ instance Pretty Resource where
          , "md5:"  <+> pretty (md5sum resourceData)
          ]
 
-parseXmlResource :: Element -> Either String Resource
-parseXmlResource e@(Element "resource" _ _) = do
+parseXml_resource :: Element -> Either String Resource
+parseXml_resource e@(Element "resource" _ _) = do
   resourceName <- attributeText "name"     e
   resourceType <- attributeText "type"     e
   resourceFile <- attributeText "filename" e
@@ -435,10 +435,10 @@ parseXmlResource e@(Element "resource" _ _) = do
   if resourceCsum == MD5.hash resourceData
     then Right Resource{..}
     else Left $ "checksum mismatch for resource: " <> show resourceName
-parseXmlResource _ = Left "expected <resource> element"
+parseXml_resource _ = Left "expected <resource> element"
 
-renderXmlResource :: Resource -> Element
-renderXmlResource Resource{..} =
+renderXml_resource :: Resource -> Element
+renderXml_resource Resource{..} =
   let resourceCsum      = md5sum resourceData
       elementName       = "resource"
       elementNodes      = [NodeContent $ encodeBase64 resourceData]
@@ -451,23 +451,23 @@ renderXmlResource Resource{..} =
 
 -- | Parse a @<resources>@ XML element, which should contain a list of
 -- all embedded resources.
-parseXmlResources :: Element -> Either String (Map Text Resource)
-parseXmlResources e@(Element "resources" _ _) = do
-  resources <- forM (childElements e) parseXmlResource
+parseXml_resources :: Element -> Either String (Map Text Resource)
+parseXml_resources e@(Element "resources" _ _) = do
+  resources <- forM (childElements e) parseXml_resource
   return $ Map.fromList $ zip (resourceName <$> resources) resources
-parseXmlResources _ = Left "expected <resources> element"
+parseXml_resources _ = Left "expected <resources> element"
 
-renderXmlResources :: Map Text Resource -> Element
-renderXmlResources rs =
+renderXml_resources :: Map Text Resource -> Element
+renderXml_resources rs =
   let elementName       = "resources"
-      elementNodes      = NodeElement <$> renderXmlResource <$> Map.elems rs
+      elementNodes      = NodeElement <$> renderXml_resource <$> Map.elems rs
       elementAttributes = Map.empty
   in Element{..}
 
 -- | Parse a @<Preset>@ XML element, which should be the root element
 -- of the preset settings document.
-parseXmlPreset :: BS.ByteString -> [ByteString] -> Element -> Either String Preset
-parseXmlPreset presetVersion presetIcon e@(Element "Preset" _ _) = do
+parseXml_Preset :: BS.ByteString -> [ByteString] -> Element -> Either String Preset
+parseXml_Preset presetVersion presetIcon e@(Element "Preset" _ _) = do
   presetName    <- attributeText "name"      e
   presetPaintop <- attributeText "paintopid" e
   resourceCount <- optional $ attributeText "embedded_resources" e >>= decodeInt
@@ -482,15 +482,15 @@ parseXmlPreset presetVersion presetIcon e@(Element "Preset" _ _) = do
     else Left "resource count mismatch"
   where
     addChild (xs, ys) child =
-      ((\x -> (x:xs,      ys)) <$> parseXmlParam     child) <>
-      ((\y -> (  xs, y <> ys)) <$> parseXmlResources child)
-parseXmlPreset _ _ _ = Left "expected <Preset> element"
+      ((\x -> (x:xs,      ys)) <$> parseXml_param     child) <>
+      ((\y -> (  xs, y <> ys)) <$> parseXml_resources child)
+parseXml_Preset _ _ _ = Left "expected <Preset> element"
 
 -- | Generate an XML @<Preset>@ element.
-renderXmlPreset :: Preset -> Element
-renderXmlPreset Preset{..} =
-  let paramNodes        = renderXmlParams    presetParams
-      resourcesNode     = renderXmlResources embeddedResources
+renderXml_Preset :: Preset -> Element
+renderXml_Preset Preset{..} =
+  let paramNodes        = renderXml_params    presetParams
+      resourcesNode     = renderXml_resources embeddedResources
       resourceCount     = T.pack $ show $ length embeddedResources
       elementName       = "Preset"
       elementNodes      = NodeElement <$> resourcesNode : paramNodes

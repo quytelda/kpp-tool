@@ -74,6 +74,7 @@ instance (Ord k, FromArgument k, FromArgument a) => FromArgument (Map.Map k a) w
 data RunConfig = RunConfig
   { runInputPath  :: Maybe FilePath
   , runOverwrite  :: Bool
+  , runQuiet      :: Bool
   , runOperations :: [Op]
   }
 
@@ -81,6 +82,7 @@ defaults :: RunConfig
 defaults = RunConfig
   { runInputPath  = Nothing
   , runOverwrite  = False
+  , runQuiet      = False
   , runOperations = []
   }
 
@@ -106,14 +108,16 @@ addOperation op = mapConfig $ \config@RunConfig{..} ->
 
 -- | Save a `Resource` to file. An optional output path can be
 -- provided; otherwise, the resource's filename property is used.
-writeResource :: MonadIO m => Maybe FilePath -> Resource -> m ()
-writeResource mpath Resource{..} = liftIO $ do
+writeResource :: Maybe FilePath -> Resource -> Op
+writeResource mpath Resource{..} = do
+  RunConfig{..} <- lift ask
+
   -- If no output path was specified, we inform the user where the
   -- output will be written.
-  when (isNothing mpath) $
-    putStrLn $ "Writing resource data to: " <> path
+  unless (runQuiet || isJust mpath) $
+    liftIO $ putStrLn $ "Writing resource data to: " <> path
 
-  BS.writeFile path resourceData
+  liftIO $ BS.writeFile path resourceData
   where
     path = fromMaybe (T.unpack resourceFile) mpath
 
@@ -216,6 +220,9 @@ options = [ Option "h" ["help"]
           , Option "O" ["overwrite"]
             (NoArg $ mapConfig $ \c -> c { runOverwrite = True })
             "Modify a preset file in-place."
+          , Option "q" ["quiet"]
+            (NoArg $ mapConfig $ \c -> c { runQuiet = True })
+            "Supress unnecessary output."
 
           -- Operations
           , Option "o" ["output"]

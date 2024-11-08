@@ -239,7 +239,7 @@ spec_start = do
 
       let destDir = testDir </> "extract_all"
       createDirectory destDir
-      withCurrentDirectory destDir $ start [ "--extract-all", kppPath ]
+      withCurrentDirectory destDir $ start [ "--extract-all", "--quiet", kppPath ]
 
       egg       <- BL.readFile $ destDir </> "egg.png"
       hourglass <- BL.readFile $ destDir </> "hourglass.png"

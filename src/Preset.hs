@@ -2,22 +2,22 @@
 {-# LANGUAGE RecordWildCards   #-}
 
 module Preset
-  ( Preset(..)
-  , presetIconDimensions
+  ( ParamValue(..)
   , prettyParams
-  , prettyResources
-  , ParamValue(..)
   , Resource(..)
+  , resourceMD5
+  , prettyResources
+  , Preset(..)
+  , presetIconDimensions
   , loadPreset
   , savePreset
-  , resourceMD5
+  , setPresetName
   , lookupParam
   , insertParam
   , lookupResourceByName
   , lookupResourceByFile
   , lookupResourceByMD5
   , insertResource
-  , setPresetName
   , getPresetIcon
   , setPresetIcon
   , decodeBase16

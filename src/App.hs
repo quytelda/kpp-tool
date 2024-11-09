@@ -2,7 +2,16 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards   #-}
 
-module App where
+module App
+  ( kppToolVersion
+  , FromArgument(..)
+  , fromArgument_
+  , RunConfig(..)
+  , RunMode(..)
+  , Op
+  , run
+  , start
+  ) where
 
 import           Control.Applicative
 import           Control.Monad

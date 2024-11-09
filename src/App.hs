@@ -275,8 +275,7 @@ options = [ Option "h" ["help"]
             \the preset's name to \"foobar\"."
           , Option "p" ["get-param"]
             (ReqArg (addOperation . op_getParam . fromArgument_) "KEY")
-            "Print the value of a single parameter.\n\
-            \If the value is binary, it will be displayed in base-64."
+            "Print the value of a single parameter."
           , Option "P" ["set-param"]
             (ReqArg (addOperation . op_setParam . fromArgument_) "KEY=TYPE:VALUE")
             "Set the value of a parameter.\n\

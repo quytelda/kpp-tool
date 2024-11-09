@@ -1,6 +1,14 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards   #-}
 
+{-|
+Module      : Preset
+Copyright   : (c) Quytelda Kahja, 2024
+License     : BSD-3-Clause
+
+This module contains functions and data structures for parsing,
+rendering, and manipulating brush presets (KPP files).
+-}
 module Preset
   ( ParamValue(..)
   , prettyParams
@@ -279,22 +287,26 @@ putPreset preset@Preset{..} = do
 -- XML Parsing & Rendering --
 -----------------------------
 
+-- | Encode binary data into a base-16 (hex) string.
 encodeBase16 :: BS.ByteString -> Text
 encodeBase16 = decodeUtf8 . Base16.encode
 
+-- | Decode a base-16 (hex) string into binary data.
 decodeBase16 :: Text -> Either String BS.ByteString
 decodeBase16 = Base16.decode . encodeUtf8
 
+-- | Encode binary data into a base-64 string.
 encodeBase64 :: BS.ByteString -> Text
 encodeBase64 = decodeUtf8 . Base64.encode
 
+-- | Decode a base-64 string into binary data.
+--
+-- Krita presets sometimes contain binary data which is base64-encoded
+-- twice. I don't know if that is intentional or a bug since there is
+-- no obvious pattern to which data is double encoded. Therefore, we
+-- try base64-decoding all encoded data twice if possible.
 decodeBase64 :: Text -> Either String BS.ByteString
 decodeBase64 t =
-  -- Krita presets sometimes contain binary data which is
-  -- base64-encoded twice. I don't know if that is intentional or a
-  -- bug since there is no obvious pattern to which data is double
-  -- encoded. Therefore, we try base64-decoding all encoded data twice
-  -- if possible.
   let bs1 = Base64.decode $ encodeUtf8 t
       bs2 = Base64.decode =<< bs1
   in bs2 <> bs1
@@ -495,11 +507,13 @@ renderXml_Preset Preset{..} =
 -- Convenience Functions --
 ---------------------------
 
+-- | Read and parse a KPP file.
 loadPreset :: FilePath -> IO Preset
 loadPreset path = do
   contents <- BL.readFile path
   return $ decode contents
 
+-- | Render and write a KPP file.
 savePreset :: FilePath -> Preset -> IO ()
 savePreset path preset =
   let contents = encode preset

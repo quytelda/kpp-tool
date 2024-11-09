@@ -2,6 +2,16 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards   #-}
 
+{-|
+Module      : App
+Description : Application Logic
+Copyright   : (c) Quytelda Kahja, 2024
+License     : BSD-3-Clause
+
+This module contains logic related to the command-line interface,
+including argument parsing, runtime configuration, and version/help
+information.
+-}
 module App
   ( kppToolVersion
   , FromArgument(..)
@@ -54,7 +64,7 @@ commaSep [] = []
 commaSep xs = uncurry (:) . second (commaSep . drop 1) . break (== ',') $ xs
 
 -- | FromArgument is a class for types that can be parsed from a
--- string argument to a CLI option, e.g. --some-flag=<ARG>.
+-- `Prelude.String` argument to a CLI option, e.g. @--some-flag=ARGUMENT@.
 class FromArgument a where
   fromArgument :: String -> Either String a
 
@@ -85,13 +95,15 @@ instance (FromArgument k, FromArgument a) => FromArgument (k, a) where
 instance (Ord k, FromArgument k, FromArgument a) => FromArgument (Map.Map k a) where
   fromArgument = fmap Map.fromList . traverse fromArgument . commaSep
 
+-- | The settings required for a normal operational run.
 data RunConfig = RunConfig
-  { runInputPath  :: Maybe FilePath
-  , runOverwrite  :: Bool
-  , runQuiet      :: Bool
-  , runOperations :: [Op]
+  { runInputPath  :: Maybe FilePath -- ^ A KPP file to process
+  , runOverwrite  :: Bool           -- ^ Whether to overwrite the input file
+  , runQuiet      :: Bool           -- ^ Supress unnecessary output
+  , runOperations :: [Op]           -- ^ Operations to run on the input
   }
 
+-- | Default Runtime Options
 defaults :: RunConfig
 defaults = RunConfig
   { runInputPath  = Nothing
@@ -100,9 +112,11 @@ defaults = RunConfig
   , runOperations = []
   }
 
-data RunMode = HelpMode
-             | VersionMode
-             | RunMode RunConfig
+-- | A sum type representing different program operating modes which
+-- require different settings.
+data RunMode = HelpMode          -- ^ Display help and usage information.
+             | VersionMode       -- ^ Display version information.
+             | RunMode RunConfig -- ^ Run a sequence of operations.
 
 mapConfig :: (RunConfig -> RunConfig) -> RunMode -> RunMode
 mapConfig f (RunMode x) = RunMode (f x)
@@ -120,6 +134,7 @@ addOperation :: Op -> RunMode -> RunMode
 addOperation op = mapConfig $ \config@RunConfig{..} ->
   config { runOperations = op : runOperations }
 
+-- | A composable processing operation which acts on preset data.
 type Op = StateT Preset (ReaderT RunConfig IO) ()
 
 runOp :: Op -> RunConfig -> Preset -> IO Preset
@@ -285,6 +300,7 @@ options = [ Option "h" ["help"]
             \FILE must be a PNG file."
           ]
 
+-- | Run the program with a given configuration.
 run :: RunMode -> IO ()
 run HelpMode    = putStrLn $ usageInfo "kpp-tool" options
 run VersionMode = putStrLn $ "kpp-tool " <> showVersion kppToolVersion
@@ -298,7 +314,7 @@ run (RunMode config@RunConfig{..}) = do
   source >>= parse >>= process >>= render >>= sink
 
 -- | `start` is the primary entrypoint of the application, intended to
--- be called by `main`. It expects a list of command line arguments.
+-- be called by @main@. It expects a list of command line arguments.
 start :: [String] -> IO ()
 start args = do
   let (flags, posArgs, errs) = getOpt RequireOrder options args

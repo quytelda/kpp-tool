@@ -304,7 +304,7 @@ options = [ Option "h" ["help"]
 
 -- | Run the program with a given configuration.
 run :: RunMode -> IO ()
-run HelpMode    = putStrLn $ usageInfo "kpp-tool" options
+run HelpMode    = putStrLn $ usageInfo "Usage: kpp-tool [OPTION]... [FILE]" options
 run VersionMode = putStrLn $ "kpp-tool " <> showVersion kppToolVersion
 run (RunMode config@RunConfig{..}) = do
   let source  = maybe BS.getContents BS.readFile runInputPath

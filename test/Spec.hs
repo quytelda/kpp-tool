@@ -6,6 +6,7 @@ import qualified Crypto.Hash.MD5      as MD5
 import           Data.Binary
 import qualified Data.ByteString      as BS
 import qualified Data.ByteString.Lazy as BL
+import           Data.Either
 import           Data.Int             (Int64)
 import qualified Data.Map.Strict      as Map
 import           Data.Maybe
@@ -171,6 +172,15 @@ spec_FromArgument = describe "FromArgument" $ do
     fromArgument "key1=value1,key2=value2" `shouldBe` Right (Map.fromList [ ("key1", "value1")
                                                                           , ("key2", "value2")
                                                                           ] :: Map.Map T.Text T.Text)
+
+  context "when provided with invalid input" $ do
+    it "returns an error message" $ do
+      (fromArgument "invalid:example" :: Either String ParamValue)
+        `shouldSatisfy` isLeft
+      (fromArgument "invalid" :: Either String (T.Text, T.Text))
+        `shouldSatisfy` isLeft
+      (fromArgument "k1=v1,invalid,k2=v2" :: Either String (Map.Map T.Text T.Text))
+        `shouldSatisfy` isLeft
 
 spec_start :: Spec
 spec_start = do

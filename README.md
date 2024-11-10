@@ -71,6 +71,7 @@ The full list of supported command line flags is as follows:
 -O                  --overwrite                 Modify a preset file in-place.
 -q                  --quiet                     Supress unnecessary output.
 -o PATH             --output=PATH               Write preset data to PATH.
+                                                If PATH is "-", data will be written to stdout.
 -i                  --info                      Print a description of a preset.
 -n                  --get-name                  Print a preset's metadata name.
 -N STRING           --set-name=STRING           Change a preset's metadata name.

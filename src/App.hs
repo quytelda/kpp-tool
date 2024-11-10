@@ -227,9 +227,11 @@ op_setIcon path = do
     Left  err     -> fail $ "set-icon: " <> err
 
 op_output :: FilePath -> Op
-op_output path = do
-  preset <- get
-  liftIO $ savePreset path preset
+op_output path = get >>= liftIO . write . encode
+  where
+    write = case path of
+      "-" -> BL.putStr
+      _   -> BL.writeFile path
 
 op_syncName :: Op
 op_syncName = do
@@ -258,7 +260,8 @@ options = [ Option "h" ["help"]
           -- Operations
           , Option "o" ["output"]
             (ReqArg (addOperation . op_output . fromArgument_) "PATH")
-            "Write preset data to PATH."
+            "Write preset data to PATH.\n\
+            \If PATH is \"-\", data will be written to stdout."
           , Option "i" ["info"]
             (NoArg  (addOperation op_info))
             "Print a description of a preset."

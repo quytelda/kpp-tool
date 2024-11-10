@@ -61,3 +61,30 @@ $ kpp-tool -O --get-icon=old-icon.png \
               --set-icon=new-icon.png \
               preset.kpp
 ```
+
+## Options
+
+The full list of supported command line flags is as follows:
+```
+-h                  --help                      Display help and usage information.
+-v                  --version                   Display version information.
+-O                  --overwrite                 Modify a preset file in-place.
+-q                  --quiet                     Supress unnecessary output.
+-o PATH             --output=PATH               Write preset data to PATH.
+-i                  --info                      Print a description of a preset.
+-n                  --get-name                  Print a preset's metadata name.
+-N STRING           --set-name=STRING           Change a preset's metadata name.
+-S                  --sync-name                 Change a preset's metadata name to match it's filename.
+                                                For example, 'kpp-tool --sync-name foobar.kpp' will change
+                                                the preset's name to "foobar".
+-p KEY              --get-param=KEY             Print the value of a single parameter.
+-P KEY=TYPE:VALUE   --set-param=KEY=TYPE:VALUE  Set the value of a parameter.
+                                                TYPE can be 'string', 'internal', or 'binary'.
+                                                For binary parameters, VALUE should be encoded in base-64.
+-x KEY=VALUE[,...]  --extract=KEY=VALUE[,...]   Extract an embedded resource.
+-X                  --extract-all               Extract all embedded resources.
+-e KEY=VALUE[,...]  --embed=KEY=VALUE[,...]     Insert or update a resource file.
+-c PATH             --get-icon=PATH             Extract a preset's PNG icon image.
+-C PATH             --set-icon=PATH             Change a preset's icon image.
+                                                FILE must be a PNG file.
+```

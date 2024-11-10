@@ -60,6 +60,15 @@ $ kpp-tool --get-param FlowSensor --get-param FlowValue preset.kpp
 $ kpp-tool -O --get-icon=old-icon.png \
               --set-icon=new-icon.png \
               preset.kpp
+
+# Create three variations of a preset with different blending modes.
+$ kpp-tool --set-param CompositeOp=string:multiply \
+           --output preset_multiply.kpp \
+           --set-param CompositeOp=string:dodge \
+           --output preset_dodge.kpp \
+           --set-param CompositeOp=string:soft_light_svg \
+           --output preset_softlight.kpp \
+           preset.kpp
 ```
 
 ## Options

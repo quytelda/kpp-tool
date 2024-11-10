@@ -14,7 +14,7 @@ The most common pattern for invoking `kpp-tool` is:
 kpp-tool [FLAGS] [KPP_FILE]
 ```
 
-where `KPP_FILE` is the path a preset file. If no path is provided,
+where `KPP_FILE` is the path to a preset file. If no path is provided,
 the program will attempt to read a file from `stdin`.
 
 There are generally two kinds of command line flags:
@@ -74,11 +74,22 @@ $ kpp-tool --set-param CompositeOp=string:multiply \
 ## Options
 
 The full list of supported command line flags is as follows:
+
 ```
 -h                  --help                      Display help and usage information.
 -v                  --version                   Display version information.
+```
+
+### Global Options
+
+```
 -O                  --overwrite                 Modify a preset file in-place.
 -q                  --quiet                     Supress unnecessary output.
+```
+
+### Operations
+
+```
 -o PATH             --output=PATH               Write preset data to PATH.
                                                 If PATH is "-", data will be written to stdout.
 -i                  --info                      Print a description of a preset.

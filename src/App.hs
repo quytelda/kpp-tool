@@ -59,9 +59,17 @@ breakOn c = go []
                  | otherwise = Just (reverse xs, ys)
     go _ _                   = Nothing
 
+-- | Split a `Prelude.String` on the first comma which is not escaped
+-- with backslash.
+splitOnComma :: String -> (String, String)
+splitOnComma []              = ([], [])
+splitOnComma (',' : cs)      = ([], cs)
+splitOnComma ('\\' : c : cs) = first (c :) $ splitOnComma cs
+splitOnComma (c : cs)        = first (c :) $ splitOnComma cs
+
 commaSep :: String -> [String]
 commaSep [] = []
-commaSep xs = uncurry (:) . second (commaSep . drop 1) . break (== ',') $ xs
+commaSep xs = uncurry (:) . second commaSep . splitOnComma $ xs
 
 -- | FromArgument is a class for types that can be parsed from a
 -- `Prelude.String` argument to a CLI option, e.g. @--some-flag=ARGUMENT@.

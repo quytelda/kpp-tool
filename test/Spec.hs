@@ -169,9 +169,11 @@ spec_FromArgument = describe "FromArgument" $ do
     fromArgument "key=value" `shouldBe` Right ("key" :: T.Text, "value" :: T.Text)
 
   it "can parse dictionary arguments" $ do
-    fromArgument "key1=value1,key2=value2" `shouldBe` Right (Map.fromList [ ("key1", "value1")
-                                                                          , ("key2", "value2")
-                                                                          ] :: Map.Map T.Text T.Text)
+    fromArgument "key1=value1,key2=has\\,commas\\,,key3=value3" `shouldBe`
+      Right (Map.fromList [ ("key1", "value1")
+                          , ("key2", "has,commas,")
+                          , ("key3", "value3")
+                          ] :: Map.Map T.Text T.Text)
 
   context "when provided with invalid input" $ do
     it "returns an error message" $ do

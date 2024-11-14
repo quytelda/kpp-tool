@@ -8,4 +8,14 @@ and this project adheres to the
 
 ## Unreleased
 
-## 0.1.0.0 - YYYY-MM-DD
+## 0.1.0 - 2024-11-13
+
+### Added
+
+- Parsing and rendering of KPP files
+- The ability to change a preset's name
+- The ability to synchronize a preset's name and filename
+- The ability to get and set preset parameters
+- The ability to extract and embed resources
+- The ability to get and set preset icons
+- A suite of unit tests

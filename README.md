@@ -109,3 +109,44 @@ The full list of supported command line flags is as follows:
 -C PATH             --set-icon=PATH             Change a preset's icon image.
                                                 FILE must be a PNG file.
 ```
+
+# Building
+
+`kpp-tool` can be built using stack or cabal. Build dependencies
+include `zlib`, as well as common build tools like `pkg-config` and
+`g++`. Depending on your platform, you may need to install development
+packages for some dependencies like `libc` and `zlib` (e.g. `zlib-dev`
+on Alpine).
+
+## Stack
+
+You should be able to build the program by running `stack build` in
+the root directory of the repository. `stack install` will copy the
+executable to the local bin directory (usually `$HOME/.local/bin`),
+which may need to be added to PATH.
+
+## Cabal
+
+Building with Cabal is fairly similar. After obtaining the source code
+and required dependencies, running `cabal build` in the root directory
+of the repository should build the software. Alternatively, to produce
+a fully static binary, build with the `--enable-executable-static`
+option and make sure statically linked `zlib` is available.
+
+For example, here is the full build process on Alpine Linux.
+```
+# (as root)
+# For static linking, also install the zlib-static package.
+apk update
+apk add git cabal g++ zlib-dev
+
+# (as regular user)
+git clone https://github.com/quytelda/kpp-tool.git
+cd kpp-tool
+
+cabal update
+cabal build
+
+# Alternatively, to produce a fully static binary:
+cabal build --enable-executable-static
+```

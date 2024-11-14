@@ -473,7 +473,9 @@ parseXml_Preset :: BS.ByteString -> [ByteString] -> Element -> Either String Pre
 parseXml_Preset presetVersion presetIcon e@(Element "Preset" _ _) = do
   presetName    <- attributeText "name"      e
   presetPaintop <- attributeText "paintopid" e
-  resourceCount <- optional $ attributeText "embedded_resources" e >>= decodeInt
+  resourceCount <- case attributeText "embedded_resources" e of
+    Right val -> Just <$> decodeInt val
+    _         -> pure Nothing
 
   (presetParams, embeddedResources) <- first Map.fromList <$>
     foldM addChild (mempty, mempty) (childElements e)

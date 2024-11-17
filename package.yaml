@@ -50,7 +50,7 @@ library:
   source-dirs: src
 
 executables:
-  kpp-tool-exe:
+  kpp-tool:
     main:                Main.hs
     source-dirs:         app
     ghc-options:

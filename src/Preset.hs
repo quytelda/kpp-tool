@@ -10,13 +10,18 @@ This module contains functions and data structures for parsing,
 rendering, and manipulating brush presets (KPP files).
 -}
 module Preset
-  ( ParamValue(..)
+  ( decodeBase16
+  , encodeBase16
+  , decodeBase64
+  , encodeBase64
+  , md5sum
+  , ParamValue(..)
+  , prettyParam
   , prettyParams
   , Resource(..)
   , resourceMD5
   , prettyResources
   , Preset(..)
-  , presetIconDimensions
   , loadPreset
   , savePreset
   , setPresetName
@@ -28,10 +33,7 @@ module Preset
   , insertResource
   , getPresetIcon
   , setPresetIcon
-  , decodeBase16
-  , encodeBase16
-  , decodeBase64
-  , encodeBase64
+  , presetIconDimensions
   ) where
 
 import           Codec.Compression.Zlib
@@ -58,6 +60,37 @@ import qualified Data.Text.Read         as Read
 import           Prettyprinter          hiding (width)
 import           Text.XML
 
+-- | Encode binary data into a base-16 (hex) string.
+encodeBase16 :: BS.ByteString -> Text
+encodeBase16 = decodeUtf8 . Base16.encode
+
+-- | Decode a base-16 (hex) string into binary data.
+decodeBase16 :: Text -> Either String BS.ByteString
+decodeBase16 = Base16.decode . encodeUtf8
+
+-- | Encode binary data into a base-64 string.
+encodeBase64 :: BS.ByteString -> Text
+encodeBase64 = decodeUtf8 . Base64.encode
+
+-- | Decode a base-64 string into binary data.
+--
+-- Krita presets sometimes contain binary data which is base64-encoded
+-- twice. I don't know if that is intentional or a bug since there is
+-- no obvious pattern to which data is double encoded. Therefore, we
+-- try base64-decoding all encoded data twice if possible.
+decodeBase64 :: Text -> Either String BS.ByteString
+decodeBase64 t =
+  let bs1 = Base64.decode $ encodeUtf8 t
+      bs2 = Base64.decode =<< bs1
+  in bs2 <> bs1
+
+-- | Calculate an MD5 checksum.
+--
+-- The result is returned in hexadecimal notation, and should match
+-- the output of md5sum from the GNU coreutils.
+md5sum :: BS.ByteString -> Text
+md5sum = encodeBase16 . MD5.hash
+
 -----------------------------
 -- PNG Parsing & Rendering --
 -----------------------------
@@ -83,6 +116,9 @@ expect expected = do
 pngMagicString :: ByteString
 pngMagicString = "\x89\x50\x4E\x47\x0D\x0A\x1A\x0A"
 
+isPngData :: BS.ByteString -> Bool
+isPngData bs = BS.toStrict pngMagicString `BS.isPrefixOf` bs
+
 getMagicString :: Get ()
 getMagicString = expect pngMagicString
 
@@ -93,37 +129,6 @@ data Chunk = VersionChunk ByteString
            | SettingChunk ByteString
            | RegularChunk ByteString
            deriving (Show)
-
-instance Binary Chunk where
-  get = getChunk
-  put = putChunk
-
-getChunk :: Get Chunk
-getChunk = do
-  chunkLength <- getWord32be
-  chunkData   <- getLazyByteString $ fromIntegral (4 + chunkLength)
-  chunkCsum   <- getWord32be
-
-  if chunkCsum == crc32 chunkData
-    then runGetOrFail' getChunkData chunkData
-    else fail "checksum mismatch"
-  where
-    getChunkData = VersionChunk <$> getKeywordChunk "version" <|>
-                   SettingChunk <$> getKeywordChunk "preset"  <|>
-                   RegularChunk <$> getRemainingLazyByteString
-
-putChunk :: Chunk -> Put
-putChunk chunk = do
-  putWord32be chunkLength
-  putLazyByteString chunkData
-  putWord32be chunkCsum
-  where
-    chunkData = runPut $ case chunk of
-      VersionChunk version -> putTextChunk "version" version
-      SettingChunk xml     -> putZtxtChunk "preset"  xml
-      RegularChunk bytes   -> putLazyByteString bytes
-    chunkLength = fromIntegral $ BL.length chunkData - 4
-    chunkCsum   = crc32 chunkData
 
 getTextChunk :: ByteString -> Get ByteString
 getTextChunk key = do
@@ -177,6 +182,37 @@ getKeywordChunk key = getTextChunk key <|>
                       getZtxtChunk key <|>
                       getItxtChunk key
 
+getChunk :: Get Chunk
+getChunk = do
+  chunkLength <- getWord32be
+  chunkData   <- getLazyByteString $ fromIntegral (4 + chunkLength)
+  chunkCsum   <- getWord32be
+
+  if chunkCsum == crc32 chunkData
+    then runGetOrFail' getChunkData chunkData
+    else fail "checksum mismatch"
+  where
+    getChunkData = VersionChunk <$> getKeywordChunk "version" <|>
+                   SettingChunk <$> getKeywordChunk "preset"  <|>
+                   RegularChunk <$> getRemainingLazyByteString
+
+putChunk :: Chunk -> Put
+putChunk chunk = do
+  putWord32be chunkLength
+  putLazyByteString chunkData
+  putWord32be chunkCsum
+  where
+    chunkData = runPut $ case chunk of
+      VersionChunk version -> putTextChunk "version" version
+      SettingChunk xml     -> putZtxtChunk "preset"  xml
+      RegularChunk bytes   -> putLazyByteString bytes
+    chunkLength = fromIntegral $ BL.length chunkData - 4
+    chunkCsum   = crc32 chunkData
+
+instance Binary Chunk where
+  get = getChunk
+  put = putChunk
+
 makeVersionChunk :: BS.ByteString -> Chunk
 makeVersionChunk = VersionChunk . BS.fromStrict
 
@@ -211,10 +247,6 @@ data Preset = Preset
   , embeddedResources :: !(Map Text Resource)
   , presetIcon        :: ![ByteString]
   } deriving (Eq, Show)
-
--- | Get the dimensions of the preset icon image.
-presetIconDimensions :: Preset -> (Word32, Word32)
-presetIconDimensions Preset{..} = runGet getIhdrDimensions $ head presetIcon
 
 -- | Format a table of parameter names and values.
 prettyParams :: Map Text ParamValue -> Doc ann
@@ -287,33 +319,6 @@ putPreset preset@Preset{..} = do
 -- XML Parsing & Rendering --
 -----------------------------
 
--- | Encode binary data into a base-16 (hex) string.
-encodeBase16 :: BS.ByteString -> Text
-encodeBase16 = decodeUtf8 . Base16.encode
-
--- | Decode a base-16 (hex) string into binary data.
-decodeBase16 :: Text -> Either String BS.ByteString
-decodeBase16 = Base16.decode . encodeUtf8
-
--- | Encode binary data into a base-64 string.
-encodeBase64 :: BS.ByteString -> Text
-encodeBase64 = decodeUtf8 . Base64.encode
-
--- | Decode a base-64 string into binary data.
---
--- Krita presets sometimes contain binary data which is base64-encoded
--- twice. I don't know if that is intentional or a bug since there is
--- no obvious pattern to which data is double encoded. Therefore, we
--- try base64-decoding all encoded data twice if possible.
-decodeBase64 :: Text -> Either String BS.ByteString
-decodeBase64 t =
-  let bs1 = Base64.decode $ encodeUtf8 t
-      bs2 = Base64.decode =<< bs1
-  in bs2 <> bs1
-
-md5sum :: BS.ByteString -> Text
-md5sum = encodeBase16 . MD5.hash
-
 -- | Helper function to parse an Int from a Text value.
 --
 -- Note: This function fails if unconsumed data remains after parsing.
@@ -338,9 +343,6 @@ contentText (Element _ _ nodes) =
 -- | Select the element children of a given `Element`.
 childElements :: Element -> [Element]
 childElements e = [child | NodeElement child <- elementNodes e]
-
-isPngData :: BS.ByteString -> Bool
-isPngData bs = BS.toStrict pngMagicString `BS.isPrefixOf` bs
 
 -- | Pretty printer for arbitrary blobs of binary data.
 --
@@ -367,9 +369,10 @@ prettyParam key val = pretty key <> ":" <+> pretty val
 -- | `ParamValue` represents the value of a preset parameter.
 --
 -- Parameter values have an associated type which can be:
---   - "string" (for textual data)
---   - "internal" (no specific QVariant wrapper?)
---   - "bytearray" (for binary data encoded in base64)
+--
+--   * "string" (for textual data)
+--   * "internal" (no specific QVariant wrapper?)
+--   * "bytearray" (for binary data encoded in base64)
 data ParamValue = String   !Text
                 | Internal !Text
                 | Binary   !BS.ByteString
@@ -580,3 +583,7 @@ setPresetIcon pngData preset =
   case runGetOrFail (getMagicString *> some getChunk) pngData of
     Left  (_, _, err)    -> Left err
     Right (_, _, chunks) -> Right $ preset { presetIcon = [c | RegularChunk c <- chunks] }
+
+-- | Get the dimensions of the preset icon image.
+presetIconDimensions :: Preset -> (Word32, Word32)
+presetIconDimensions Preset{..} = runGet getIhdrDimensions $ head presetIcon

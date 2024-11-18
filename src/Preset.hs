@@ -24,6 +24,8 @@ module Preset
   , Preset(..)
   , loadPreset
   , savePreset
+  , loadResource
+  , saveResource
   , setPresetName
   , lookupParam
   , insertParam
@@ -53,11 +55,13 @@ import           Data.Digest.CRC32
 import           Data.Foldable
 import           Data.Map.Strict        (Map)
 import qualified Data.Map.Strict        as Map
+import           Data.Maybe             (fromMaybe)
 import           Data.Text              (Text)
 import qualified Data.Text              as T
 import           Data.Text.Encoding
 import qualified Data.Text.Read         as Read
 import           Prettyprinter          hiding (width)
+import           System.FilePath
 import           Text.XML
 
 -- | Encode binary data into a base-16 (hex) string.
@@ -428,6 +432,21 @@ instance Pretty Resource where
          , "data:" <+> prettyByteData resourceData
          , "md5:"  <+> pretty (md5sum resourceData)
          ]
+
+-- | Load a resource file.
+loadResource :: FilePath -> Text -> Maybe Text -> Maybe Text -> IO Resource
+loadResource path resourceType mname mfile = do
+  let resourceFile = fromMaybe (T.pack $ takeFileName path) mfile
+      resourceName = fromMaybe (T.pack $ takeFileName path) mname
+  resourceData <- BS.readFile path
+  return Resource{..}
+
+-- | Save a resource, returning the path used.
+saveResource :: Maybe FilePath -> Resource -> IO FilePath
+saveResource mpath Resource{..} = do
+  let path = fromMaybe (T.unpack resourceFile) mpath
+  BS.writeFile path resourceData
+  return path
 
 parseXml_resource :: Element -> Either String Resource
 parseXml_resource e@(Element "resource" _ _) = do

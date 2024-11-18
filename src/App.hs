@@ -184,6 +184,12 @@ op_getParam key = do
     Just val -> liftIO $ putDoc (pretty val) *> putChar '\n'
     Nothing  -> fail $ "no such parameter: " <> T.unpack key
 
+op_listParams :: Op
+op_listParams = do
+  Preset{..} <- get
+  liftIO $ putDoc (prettyParams presetParams)
+  liftIO $ putChar '\n'
+
 op_setParam :: (Text, ParamValue) -> Op
 op_setParam = modify' . uncurry insertParam
 
@@ -288,6 +294,9 @@ options = [ Option "h" ["help"]
             "Change a preset's metadata name to match it's filename.\n\
             \For example, 'kpp-tool --sync-name foobar.kpp' will change\n\
             \the preset's name to \"foobar\"."
+          , Option "l" ["list-params"]
+            (NoArg (addOperation op_listParams))
+            "Print a table of all parameters."
           , Option "p" ["get-param"]
             (ReqArg (addOperation . op_getParam . fromArgument_) "KEY")
             "Print the value of a single parameter."

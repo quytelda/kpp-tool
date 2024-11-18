@@ -120,13 +120,13 @@ spec_Preset = describe "Preset" $ do
       iendChunk `shouldBe` "IEND"
 
     specify "can lookup resources by MD5 checksum" $ \preset -> do
-      let md5sum = "b877c93efe4540891304ae3662e9ce58"
-          brush  = fromJust $ lookupResourceByMD5 md5sum preset
+      let csum  = "b877c93efe4540891304ae3662e9ce58"
+          brush = fromJust $ lookupResourceByMD5 csum preset
 
       resourceName brush `shouldBe` "egg"
       resourceFile brush `shouldBe` "egg.png"
       resourceType brush `shouldBe` "brushes"
-      resourceMD5  brush `shouldBe` md5sum
+      resourceMD5  brush `shouldBe` csum
 
     specify "can be encoded as a lazy ByteString" $ \preset -> do
       (decode . encode) preset `shouldBe` preset

@@ -154,17 +154,14 @@ runOp op = flip $ runReaderT . execStateT op
 -- | Save a `Resource` to file. An optional output path can be
 -- provided; otherwise, the resource's filename property is used.
 writeResource :: Maybe FilePath -> Resource -> Op
-writeResource mpath Resource{..} = do
-  RunConfig{..} <- lift ask
+writeResource mpath resource = do
+  path <- liftIO $ saveResource mpath resource
 
   -- If no output path was specified, we inform the user where the
-  -- output will be written.
+  -- output was written.
+  RunConfig{..} <- lift ask
   unless (runQuiet || isJust mpath) $
-    liftIO $ putStrLn $ "Writing resource data to: " <> path
-
-  liftIO $ BS.writeFile path resourceData
-  where
-    path = fromMaybe (T.unpack resourceFile) mpath
+    liftIO $ putStrLn $ "Wrote resource to: " <> path
 
 op_info :: Op
 op_info = do
@@ -206,10 +203,11 @@ op_extract opts = do
 op_extractAll :: Maybe FilePath -> Op
 op_extractAll mdir = do
   resources <- gets embeddedResources
-
-  liftIO $ forM_ resources $ \Resource{..} ->
-    let path = fromMaybe "." mdir </> takeFileName (T.unpack resourceFile)
-    in BS.writeFile path resourceData
+  forM_ resources $ \resource@Resource{..} ->
+    let mpath = do
+          dir <- mdir
+          pure $ dir </> takeFileName (T.unpack resourceFile)
+    in writeResource mpath resource
 
 op_embed :: Map.Map Text Text -> Op
 op_embed opts = do

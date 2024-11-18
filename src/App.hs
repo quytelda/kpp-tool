@@ -82,6 +82,9 @@ fromArgument_ s = case fromArgument s of
   Right v  -> v
   Left err -> error err
 
+fromArgumentOptional :: FromArgument a => Maybe String -> Maybe a
+fromArgumentOptional = fmap fromArgument_
+
 instance FromArgument String where
   fromArgument = pure
 
@@ -200,10 +203,13 @@ op_extract opts = do
     Just resource -> writeResource mpath resource
     Nothing       -> fail "extract: no matching resource found"
 
-op_extractAll :: Op
-op_extractAll = do
+op_extractAll :: Maybe FilePath -> Op
+op_extractAll mdir = do
   resources <- gets embeddedResources
-  mapM_ (writeResource Nothing) resources
+
+  liftIO $ forM_ resources $ \Resource{..} ->
+    let path = fromMaybe "." mdir </> takeFileName (T.unpack resourceFile)
+    in BS.writeFile path resourceData
 
 op_embed :: Map.Map Text Text -> Op
 op_embed opts = do
@@ -296,8 +302,11 @@ options = [ Option "h" ["help"]
             (ReqArg (addOperation . op_extract . fromArgument_) "KEY=VALUE[,...]")
             "Extract an embedded resource."
           , Option "X" ["extract-all"]
-            (NoArg  (addOperation op_extractAll))
-            "Extract all embedded resources."
+            (OptArg  (addOperation . op_extractAll . fromArgumentOptional) "DIR")
+            "Extract all embedded resources.\n\
+            \If the optional directory path argument is provided,\n\
+            \the extracted files will be placed in DIR. In this case,\n\
+            \the '=' sign syntax is required."
           , Option "e" ["embed"]
             (ReqArg (addOperation . op_embed . fromArgument_) "KEY=VALUE[,...]")
             "Insert or update a resource file."

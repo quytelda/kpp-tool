@@ -265,11 +265,10 @@ spec_start = do
       MD5.hashlazy hourglass `shouldBe` "<\161\188\248\220\ESC\201\vZx\141\137y=*\137"
 
     it "can extract all resources" $ do
-      kppPath <- makeAbsolute path_basicShapeGrainy
-
       let destDir = testDir </> "extract_all"
       createDirectory destDir
-      withCurrentDirectory destDir $ start [ "--extract-all", "--quiet", kppPath ]
+      start [ "--extract-all=" <> destDir
+            , path_basicShapeGrainy ]
 
       egg       <- BL.readFile $ destDir </> "egg.png"
       hourglass <- BL.readFile $ destDir </> "hourglass.png"

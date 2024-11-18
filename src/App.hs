@@ -193,6 +193,12 @@ op_listParams = do
 op_setParam :: (Text, ParamValue) -> Op
 op_setParam = modify' . uncurry insertParam
 
+op_listResources :: Op
+op_listResources = do
+  Preset{..} <- get
+  liftIO $ putDoc (prettyResources embeddedResources)
+  liftIO $ putChar '\n'
+
 op_extract :: Map.Map Text Text -> Op
 op_extract opts = do
   let mpath = T.unpack <$> Map.lookup "path" opts
@@ -305,6 +311,9 @@ options = [ Option "h" ["help"]
             "Set the value of a parameter.\n\
             \TYPE can be 'string', 'internal', or 'binary'.\n\
             \For binary parameters, VALUE should be encoded in base-64."
+          , Option "r" ["list-resources"]
+            (NoArg (addOperation op_listResources))
+            "Print a table of all embedded resources."
           , Option "x" ["extract"]
             (ReqArg (addOperation . op_extract . fromArgument_) "KEY=VALUE[,...]")
             "Extract an embedded resource."

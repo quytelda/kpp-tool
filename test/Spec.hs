@@ -80,6 +80,12 @@ spec_Preset = describe "Preset" $ do
     it "decodes base-64 data" $ do
       decodeBase64 "N18A" `shouldBe` Right binData
 
+  describe "parseSettingsXml" $ do
+    it "can extract XML settings" $ do
+      bytes <- BL.readFile path_basicEllipse
+      xml   <- parseSettingsXml bytes
+      md5sum (BL.toStrict xml) `shouldBe` "2f2715bf7fca5349608f061626e73ac2"
+
   before (decode <$> BL.readFile path_basicShapeGrainy) $ do
     specify "can parse preset version" $ \Preset{..} ->
       presetVersion `shouldBe` "5.0"

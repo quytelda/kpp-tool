@@ -127,6 +127,7 @@ defaults = RunConfig
 -- require different settings.
 data RunMode = HelpMode          -- ^ Display help and usage information.
              | VersionMode       -- ^ Display version information.
+             | XmlMode FilePath  -- ^ Extract XML settings from a preset file.
              | RunMode RunConfig -- ^ Run a sequence of operations.
 
 instance Eq RunMode where
@@ -283,6 +284,9 @@ options = [ Option "h" ["help"]
           , Option "v" ["version"]
             (NoArg $ setMode VersionMode)
             "Display version information."
+          , Option "d" ["dump-xml"]
+            (ReqArg (setMode . XmlMode) "PATH")
+            "Dump a preset's XML settings."
 
           -- Global Options
           , Option "O" ["overwrite"]
@@ -350,6 +354,8 @@ options = [ Option "h" ["help"]
 run :: RunMode -> IO ()
 run HelpMode    = putStrLn $ usageInfo "Usage: kpp-tool [OPTION]... [FILE]" options
 run VersionMode = putStrLn $ "kpp-tool " <> showVersion kppToolVersion
+run (XmlMode "-" ) = BL.getContents   >>= parseSettingsXml >>= BL.putStr
+run (XmlMode path) = BL.readFile path >>= parseSettingsXml >>= BL.putStr
 run (RunMode config@RunConfig{..}) = do
   let source  = maybe BS.getContents BS.readFile runInputPath
       parse   = pure . decode . BL.fromStrict

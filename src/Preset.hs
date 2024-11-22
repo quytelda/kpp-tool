@@ -15,6 +15,7 @@ module Preset
   , decodeBase64
   , encodeBase64
   , md5sum
+  , parseSettingsXml
   , ParamValue(..)
   , prettyParam
   , prettyParams
@@ -228,6 +229,16 @@ makeSettingChunk preset =
       renderSettings   = def { rsUseCDATA = const True }
       xml              = renderLBS renderSettings Document{..}
   in SettingChunk xml
+
+-- | Extract just a preset's XML settings data.
+parseSettingsXml :: MonadFail m => BL.ByteString -> m BL.ByteString
+parseSettingsXml = runGetOrFail' $ do
+  getMagicString
+  chunks <- some getChunk
+  case [p | SettingChunk p <- chunks] of
+    [s] -> return s
+    [] -> fail "missing settings chunk"
+    _  -> fail "too many settings chunks"
 
 -------------------------------------------
 -- Preset (KPP file) Parsing & Rendering --

@@ -22,11 +22,11 @@ module Preset
   , Resource(..)
   , resourceMD5
   , prettyResources
+  , loadResource
+  , saveResource
   , Preset(..)
   , loadPreset
   , savePreset
-  , loadResource
-  , saveResource
   , setPresetName
   , lookupParam
   , insertParam
@@ -252,88 +252,6 @@ x <\> y = x <> line <> y
 (<\\>) :: Doc ann -> Doc ann -> Doc ann
 x <\\> y = x <> line <> line <> y
 
--- | A `Preset` represents a Krita brush preset, including its
--- settings and any embedded resources.
-data Preset = Preset
-  { presetVersion     :: !BS.ByteString
-  , presetName        :: !Text
-  , presetPaintop     :: !Text
-  , presetParams      :: !(Map Text ParamValue)
-  , embeddedResources :: !(Map Text Resource)
-  , presetIcon        :: ![ByteString]
-  } deriving (Eq, Show)
-
--- | Format a table of parameter names and values.
-prettyParams :: Map Text ParamValue -> Doc ann
-prettyParams = concatWith (<\>) . Map.mapWithKey prettyParam
-
--- | Format a table of embedded resource entries.
-prettyResources :: Map Text Resource -> Doc ann
-prettyResources m | Map.null m = "No Resources"
-                  | otherwise  = concatWith (<\\>) $ pretty <$> m
-
-instance Pretty Preset where
-  pretty preset@Preset{..} =
-    vsep [ "name:"    <+> pretty  presetName
-         , "version:" <+> viaShow presetVersion
-         , "paintop:" <+> pretty  presetPaintop
-         , "icon:"    <+> pretty width <> "x" <> pretty height
-         ]
-    <\\> nest 2 ("Parameters:"          <\> prettyParams    presetParams)
-    <\\> nest 2 ("Embedded Resources:"  <\> prettyResources embeddedResources)
-    where
-      (width, height) = presetIconDimensions preset
-
-instance Binary Preset where
-  get = getPreset
-  put = putPreset
-
-getPreset :: Get Preset
-getPreset = do
-  getMagicString
-
-  chunks <- some getChunk
-  let versionChunks = [v | VersionChunk v <- chunks]
-      settingChunks = [p | SettingChunk p <- chunks]
-      regularChunks = [r | RegularChunk r <- chunks]
-
-  when (null versionChunks) $
-    fail "missing preset version chunk"
-
-  when (null settingChunks) $
-    fail "missing preset settings chunks"
-
-  when (length versionChunks > 1 || length settingChunks > 1) $
-    fail "duplicated metadata chunks"
-
-  let version = BS.toStrict (head versionChunks)
-      xml     = head settingChunks
-
-  either fail pure
-    $ parseXml_Preset version regularChunks
-    $ documentRoot
-    $ parseLBS_ def xml
-
-putPreset :: Preset -> Put
-putPreset preset@Preset{..} = do
-  -- The metadata chunks must be inserted after the IHDR chunk.
-  -- Krita inserts the elements following the IHDR and pHYs chunks,
-  -- but before the IDAT chunks, so this code matches that behavior.
-  let isFollower bs = BL.isPrefixOf "IDAT" bs || BL.isPrefixOf "IEND" bs
-      (pre, post) = break isFollower presetIcon
-      versionChunk = makeVersionChunk presetVersion
-      settingChunk = makeSettingChunk preset
-
-  putMagicString
-  traverse_ put (RegularChunk <$> pre)
-  put settingChunk
-  put versionChunk
-  traverse_ put (RegularChunk <$> post)
-
------------------------------
--- XML Parsing & Rendering --
------------------------------
-
 -- | Helper function to parse an Int from a Text value.
 --
 -- Note: This function fails if unconsumed data remains after parsing.
@@ -375,12 +293,6 @@ prettyByteData bytes
                   then "PNG Image"
                   else "Binary Data"
 
--- | Pretty printer for parameters.
---
--- Displays a simple "key: value" representation.
-prettyParam :: Text -> ParamValue -> Doc ann
-prettyParam key val = pretty key <> ":" <+> pretty val
-
 -- | `ParamValue` represents the value of a preset parameter.
 --
 -- Parameter values have an associated type which can be:
@@ -397,6 +309,12 @@ instance Pretty ParamValue where
   pretty (String   val) = dquotes  (pretty val)
   pretty (Internal val) = squotes  (pretty val)
   pretty (Binary   val) = brackets (prettyByteData val)
+
+-- | Pretty printer for parameters.
+--
+-- Displays a simple "key: value" representation.
+prettyParam :: Text -> ParamValue -> Doc ann
+prettyParam key val = pretty key <> ":" <+> pretty val
 
 parseXml_param :: Element -> Either String (Text, ParamValue)
 parseXml_param e@(Element "param" _ _) = do
@@ -443,6 +361,11 @@ instance Pretty Resource where
          , "data:" <+> prettyByteData resourceData
          , "md5:"  <+> pretty (md5sum resourceData)
          ]
+
+-- | Calculate the MD5 checksum of a `Resource` displayed in
+-- hexadecimal notation.
+resourceMD5 :: Resource -> Text
+resourceMD5 = md5sum . resourceData
 
 -- | Load a resource file.
 loadResource :: FilePath -> Text -> Maybe Text -> Maybe Text -> IO Resource
@@ -500,6 +423,38 @@ renderXml_resources rs =
       elementAttributes = Map.empty
   in Element{..}
 
+-- | A `Preset` represents a Krita brush preset, including its
+-- settings and any embedded resources.
+data Preset = Preset
+  { presetVersion     :: !BS.ByteString
+  , presetName        :: !Text
+  , presetPaintop     :: !Text
+  , presetParams      :: !(Map Text ParamValue)
+  , embeddedResources :: !(Map Text Resource)
+  , presetIcon        :: ![ByteString]
+  } deriving (Eq, Show)
+
+-- | Format a table of parameter names and values.
+prettyParams :: Map Text ParamValue -> Doc ann
+prettyParams = concatWith (<\>) . Map.mapWithKey prettyParam
+
+-- | Format a table of embedded resource entries.
+prettyResources :: Map Text Resource -> Doc ann
+prettyResources m | Map.null m = "No Resources"
+                  | otherwise  = concatWith (<\\>) $ pretty <$> m
+
+instance Pretty Preset where
+  pretty preset@Preset{..} =
+    vsep [ "name:"    <+> pretty  presetName
+         , "version:" <+> viaShow presetVersion
+         , "paintop:" <+> pretty  presetPaintop
+         , "icon:"    <+> pretty width <> "x" <> pretty height
+         ]
+    <\\> nest 2 ("Parameters:"          <\> prettyParams    presetParams)
+    <\\> nest 2 ("Embedded Resources:"  <\> prettyResources embeddedResources)
+    where
+      (width, height) = presetIconDimensions preset
+
 -- | Parse a @<Preset>@ XML element, which should be the root element
 -- of the preset settings document.
 parseXml_Preset :: BS.ByteString -> [ByteString] -> Element -> Either String Preset
@@ -538,9 +493,51 @@ renderXml_Preset Preset{..} =
                                        ]
   in Element{..}
 
----------------------------
--- Convenience Functions --
----------------------------
+getPreset :: Get Preset
+getPreset = do
+  getMagicString
+
+  chunks <- some getChunk
+  let versionChunks = [v | VersionChunk v <- chunks]
+      settingChunks = [p | SettingChunk p <- chunks]
+      regularChunks = [r | RegularChunk r <- chunks]
+
+  when (null versionChunks) $
+    fail "missing preset version chunk"
+
+  when (null settingChunks) $
+    fail "missing preset settings chunks"
+
+  when (length versionChunks > 1 || length settingChunks > 1) $
+    fail "duplicated metadata chunks"
+
+  let version = BS.toStrict (head versionChunks)
+      xml     = head settingChunks
+
+  either fail pure
+    $ parseXml_Preset version regularChunks
+    $ documentRoot
+    $ parseLBS_ def xml
+
+putPreset :: Preset -> Put
+putPreset preset@Preset{..} = do
+  -- The metadata chunks must be inserted after the IHDR chunk.
+  -- Krita inserts the elements following the IHDR and pHYs chunks,
+  -- but before the IDAT chunks, so this code matches that behavior.
+  let isFollower bs = BL.isPrefixOf "IDAT" bs || BL.isPrefixOf "IEND" bs
+      (pre, post) = break isFollower presetIcon
+      versionChunk = makeVersionChunk presetVersion
+      settingChunk = makeSettingChunk preset
+
+  putMagicString
+  traverse_ put (RegularChunk <$> pre)
+  put settingChunk
+  put versionChunk
+  traverse_ put (RegularChunk <$> post)
+
+instance Binary Preset where
+  get = getPreset
+  put = putPreset
 
 -- | Read and parse a KPP file.
 loadPreset :: FilePath -> IO Preset
@@ -553,11 +550,6 @@ savePreset :: FilePath -> Preset -> IO ()
 savePreset path preset =
   let contents = encode preset
   in BL.writeFile path contents
-
--- | Calculate the MD5 checksum of a `Resource` displayed in
--- hexadecimal notation.
-resourceMD5 :: Resource -> Text
-resourceMD5 = md5sum . resourceData
 
 -- | Look up the value of a preset parameter.
 lookupParam :: Text -> Preset -> Maybe ParamValue

@@ -129,17 +129,28 @@ data RunMode = HelpMode          -- ^ Display help and usage information.
              | VersionMode       -- ^ Display version information.
              | RunMode RunConfig -- ^ Run a sequence of operations.
 
+instance Eq RunMode where
+  HelpMode    == HelpMode    = True
+  VersionMode == VersionMode = True
+  (XmlMode _) == (XmlMode _) = True
+  (RunMode _) == (RunMode _) = True
+  _           == _           = False
+
+instance Ord RunMode where
+  m1 <= m2 = toInt m1 <= toInt m2
+    where
+      toInt :: RunMode -> Int
+      toInt HelpMode    = 0
+      toInt VersionMode = 1
+      toInt (XmlMode _) = 2
+      toInt (RunMode _) = 3
+
 mapConfig :: (RunConfig -> RunConfig) -> RunMode -> RunMode
 mapConfig f (RunMode x) = RunMode (f x)
-mapConfig _ HelpMode    = HelpMode
-mapConfig _ VersionMode = VersionMode
+mapConfig _ m           = m
 
-setHelpMode :: RunMode -> RunMode
-setHelpMode _ = HelpMode
-
-setVersionMode :: RunMode -> RunMode
-setVersionMode HelpMode = HelpMode
-setVersionMode _        = VersionMode
+setMode :: RunMode -> RunMode -> RunMode
+setMode = min
 
 addOperation :: Op -> RunMode -> RunMode
 addOperation op = mapConfig $ \config@RunConfig{..} ->
@@ -267,10 +278,10 @@ op_syncName = do
 -- | Command Line Options
 options :: [OptDescr (RunMode -> RunMode)]
 options = [ Option "h" ["help"]
-            (NoArg setHelpMode)
+            (NoArg $ setMode HelpMode)
             "Display help and usage information."
           , Option "v" ["version"]
-            (NoArg setVersionMode)
+            (NoArg $ setMode VersionMode)
             "Display version information."
 
           -- Global Options

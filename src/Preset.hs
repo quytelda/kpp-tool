@@ -39,7 +39,6 @@ module Preset
   , presetIconDimensions
   ) where
 
-import           Codec.Compression.Zlib
 import           Control.Applicative
 import           Control.Monad
 import qualified Crypto.Hash.MD5        as MD5
@@ -52,7 +51,6 @@ import qualified Data.ByteString.Base16 as Base16
 import qualified Data.ByteString.Base64 as Base64
 import           Data.ByteString.Lazy   (ByteString)
 import qualified Data.ByteString.Lazy   as BL
-import           Data.Digest.CRC32
 import           Data.Foldable
 import           Data.Map.Strict        (Map)
 import qualified Data.Map.Strict        as Map
@@ -64,6 +62,8 @@ import qualified Data.Text.Read         as Read
 import           Prettyprinter          hiding (width)
 import           System.FilePath
 import           Text.XML
+
+import           PNG
 
 -- | Encode binary data into a base-16 (hex) string.
 encodeBase16 :: BS.ByteString -> Text
@@ -95,150 +95,6 @@ decodeBase64 t =
 -- the output of md5sum from the GNU coreutils.
 md5sum :: BS.ByteString -> Text
 md5sum = encodeBase16 . MD5.hash
-
------------------------------
--- PNG Parsing & Rendering --
------------------------------
-
-runGetOrFail' :: MonadFail f => Get a -> ByteString -> f a
-runGetOrFail' g input = case runGetOrFail g input of
-  Right (_, _, result) -> pure result
-  Left  (_, _, err)    -> fail err
-
-getNull :: Get ()
-getNull = do
-  b <- getWord8
-  guard $ b == 0
-
-putNull :: Put
-putNull = putWord8 0
-
-expect :: ByteString -> Get ()
-expect expected = do
-  actual <- getLazyByteString $ BL.length expected
-  guard $ actual == expected
-
-pngMagicString :: ByteString
-pngMagicString = "\x89\x50\x4E\x47\x0D\x0A\x1A\x0A"
-
-isPngData :: BS.ByteString -> Bool
-isPngData bs = BS.toStrict pngMagicString `BS.isPrefixOf` bs
-
-getMagicString :: Get ()
-getMagicString = expect pngMagicString
-
-putMagicString :: Put
-putMagicString = putLazyByteString pngMagicString
-
-data Chunk = VersionChunk ByteString
-           | SettingChunk ByteString
-           | RegularChunk ByteString
-           deriving (Show)
-
-getTextChunk :: ByteString -> Get ByteString
-getTextChunk key = do
-  expect "tEXt"
-  expect key *> getNull
-  getRemainingLazyByteString
-
-putTextChunk :: ByteString -> ByteString -> Put
-putTextChunk key value = do
-  putLazyByteString "tEXt"
-  putLazyByteString key *> putNull
-  putLazyByteString value
-
-getZtxtChunk :: ByteString -> Get ByteString
-getZtxtChunk keyword = do
-  expect "zTXt"
-  expect keyword *> getNull
-  void getWord8 -- compression type is always 0
-  decompress <$> getRemainingLazyByteString
-
-putZtxtChunk :: ByteString -> ByteString -> Put
-putZtxtChunk key value = do
-  putLazyByteString "zTXt"
-  putLazyByteString key *> putNull
-  putWord8 0 -- compression type is always 0
-  putLazyByteString $ compress value
-
-getItxtChunk :: ByteString -> Get ByteString
-getItxtChunk keyword = do
-  expect "iTXt"
-  expect keyword *> getNull
-  compressed <- get :: Get Bool
-  void getWord8 -- compression type is always 0
-  void getLazyByteStringNul -- ignore language tag
-  void getLazyByteStringNul -- ignore translated keyword
-  content <- getRemainingLazyByteString
-
-  return $ if compressed
-           then decompress content
-           else content
-
-getIhdrDimensions :: Get (Word32, Word32)
-getIhdrDimensions = do
-  expect "IHDR"
-  width  <- getWord32be
-  height <- getWord32be
-  return (width, height)
-
-getKeywordChunk :: ByteString -> Get ByteString
-getKeywordChunk key = getTextChunk key <|>
-                      getZtxtChunk key <|>
-                      getItxtChunk key
-
-getChunk :: Get Chunk
-getChunk = do
-  chunkLength <- getWord32be
-  chunkData   <- getLazyByteString $ fromIntegral (4 + chunkLength)
-  chunkCsum   <- getWord32be
-
-  if chunkCsum == crc32 chunkData
-    then runGetOrFail' getChunkData chunkData
-    else fail "checksum mismatch"
-  where
-    getChunkData = VersionChunk <$> getKeywordChunk "version" <|>
-                   SettingChunk <$> getKeywordChunk "preset"  <|>
-                   RegularChunk <$> getRemainingLazyByteString
-
-putChunk :: Chunk -> Put
-putChunk chunk = do
-  putWord32be chunkLength
-  putLazyByteString chunkData
-  putWord32be chunkCsum
-  where
-    chunkData = runPut $ case chunk of
-      VersionChunk version -> putTextChunk "version" version
-      SettingChunk xml     -> putZtxtChunk "preset"  xml
-      RegularChunk bytes   -> putLazyByteString bytes
-    chunkLength = fromIntegral $ BL.length chunkData - 4
-    chunkCsum   = crc32 chunkData
-
-instance Binary Chunk where
-  get = getChunk
-  put = putChunk
-
-makeVersionChunk :: BS.ByteString -> Chunk
-makeVersionChunk = VersionChunk . BS.fromStrict
-
-makeSettingChunk :: Preset -> Chunk
-makeSettingChunk preset =
-  let documentPrologue = Prologue [] Nothing []
-      documentEpilogue = []
-      documentRoot     = renderXml_Preset preset
-      renderSettings   = def { rsUseCDATA = const True }
-      xml              = renderLBS renderSettings Document{..}
-  in SettingChunk xml
-
--- | Extract just a preset's XML settings data.
-parseSettingsXml :: MonadFail m => BL.ByteString -> m BL.ByteString
-parseSettingsXml = runGetOrFail' $ do
-  getMagicString
-  chunks <- some getChunk
-  case [p | SettingChunk p <- chunks] of
-    [s] -> return s
-    [] -> fail "missing settings chunk"
-    _  -> fail "too many settings chunks"
 
 -------------------------------------------
 -- Preset (KPP file) Parsing & Rendering --
@@ -392,8 +248,8 @@ putPreset preset@Preset{..} = do
   -- but before the IDAT chunks, so this code matches that behavior.
   let isFollower bs = BL.isPrefixOf "IDAT" bs || BL.isPrefixOf "IEND" bs
       (pre, post) = break isFollower presetIcon
-      versionChunk = makeVersionChunk presetVersion
-      settingChunk = makeSettingChunk preset
+      versionChunk = VersionChunk $ BS.fromStrict presetVersion
+      settingChunk = SettingChunk $ makeSettingXml preset
 
   putMagicString
   traverse_ put (RegularChunk <$> pre)
@@ -613,3 +469,11 @@ renderXml_Preset Preset{..} =
                                        , ("embedded_resources", resourceCount)
                                        ]
   in Element{..}
+
+makeSettingXml :: Preset -> BL.ByteString
+makeSettingXml preset =
+  let documentPrologue = Prologue [] Nothing []
+      documentEpilogue = []
+      documentRoot     = renderXml_Preset preset
+      renderSettings   = def { rsUseCDATA = const True }
+  in renderLBS renderSettings Document{..}

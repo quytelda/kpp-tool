@@ -26,6 +26,7 @@ source-repository head
 library
   exposed-modules:
       App
+      PNG
       Preset
   other-modules:
       Paths_kpp_tool

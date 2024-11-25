@@ -15,8 +15,8 @@ import           System.Directory
 import           System.FilePath
 import           Test.Hspec
 
-import           App
-import           Preset
+import           KPP.App
+import           KPP.Preset
 
 pngIHDRChunkSize :: Int64
 pngIHDRChunkSize = 17

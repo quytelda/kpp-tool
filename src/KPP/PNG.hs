@@ -9,7 +9,7 @@ License     : BSD-3-Clause
 This module contains functions and data structures for parsing and
 rendering PNG files.
 -}
-module PNG where
+module KPP.PNG where
 
 import           Codec.Compression.Zlib
 import           Control.Applicative

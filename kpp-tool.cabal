@@ -25,9 +25,9 @@ source-repository head
 
 library
   exposed-modules:
-      App
-      PNG
-      Preset
+      KPP.App
+      KPP.PNG
+      KPP.Preset
   other-modules:
       Paths_kpp_tool
   autogen-modules:

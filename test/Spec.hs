@@ -18,6 +18,8 @@ import           Test.Hspec
 import           KPP.App
 import           KPP.Preset
 
+import           SpecPNG
+
 pngIHDRChunkSize :: Int64
 pngIHDRChunkSize = 17
 
@@ -49,6 +51,7 @@ main :: IO ()
 main = withTestDir $ do
   hspec spec_Preset
   hspec spec_App
+  hspec spec_PNG
 
 -----------
 -- Tests --

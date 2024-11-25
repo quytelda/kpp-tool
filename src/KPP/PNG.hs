@@ -108,6 +108,19 @@ getItxtChunk keyword = do
            then decompress content
            else content
 
+putItxtChunk :: Bool -> ByteString -> ByteString -> Put
+putItxtChunk compressed keyword value = do
+  putLazyByteString "iTXt"
+  putLazyByteString keyword *> putNull
+  put compressed -- compression
+  putWord8 0 -- compression type is always 0
+  putLazyByteString "en_US.UTF-8" *> putNull -- language tag
+  putLazyByteString keyword       *> putNull -- translated keyword
+  putLazyByteString $
+    if compressed
+    then compress value
+    else value
+
 getIhdrDimensions :: Get (Word32, Word32)
 getIhdrDimensions = do
   expect "IHDR"

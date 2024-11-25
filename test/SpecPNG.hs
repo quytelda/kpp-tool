@@ -3,15 +3,11 @@
 
 module SpecPNG where
 
-import           Data.Binary.Get
-import qualified Data.ByteString      as BS
-import qualified Data.ByteString.Lazy as BL
+import qualified Data.ByteString as BS
 import           Test.Hspec
 
-import           PNG
-
-path_1px :: FilePath
-path_1px = "png/1px.png"
+import           Common
+import           KPP.PNG
 
 spec_PNG :: Spec
 spec_PNG = do

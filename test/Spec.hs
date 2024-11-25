@@ -1,13 +1,11 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards   #-}
 
-import           Control.Exception
 import qualified Crypto.Hash.MD5      as MD5
 import           Data.Binary
 import qualified Data.ByteString      as BS
 import qualified Data.ByteString.Lazy as BL
 import           Data.Either
-import           Data.Int             (Int64)
 import qualified Data.Map.Strict      as Map
 import           Data.Maybe
 import qualified Data.Text            as T
@@ -18,34 +16,8 @@ import           Test.Hspec
 import           KPP.App
 import           KPP.Preset
 
+import           Common
 import           SpecPNG
-
-pngIHDRChunkSize :: Int64
-pngIHDRChunkSize = 17
-
--- | This is the directory where temporary test files will be created
--- during unit tests. It is automatically created when tests are run,
--- then deleted after the tests complete.
-testDir :: FilePath
-testDir = "test.tmp"
-
-withTestDir :: IO () -> IO ()
-withTestDir = bracket_
-  (createDirectory testDir)
-  (removeDirectoryRecursive testDir)
-
-----------------------------
--- Sample Files for Tests --
-----------------------------
-
-path_basicEllipse :: FilePath
-path_basicEllipse = "kpp/basic-ellipse.kpp"
-
-path_basicShapeGrainy :: FilePath
-path_basicShapeGrainy = "kpp/basic-shape-grainy.kpp"
-
-path_scribble :: FilePath
-path_scribble = "png/scribble.png"
 
 main :: IO ()
 main = withTestDir $ do

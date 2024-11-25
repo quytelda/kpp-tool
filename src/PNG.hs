@@ -41,7 +41,8 @@ putNull = putWord8 0
 expect :: ByteString -> Get ()
 expect expected = do
   actual <- getLazyByteString $ BL.length expected
-  guard $ actual == expected
+  unless (actual == expected) $
+    fail $ "expected " <> show expected
 
 pngMagicString :: ByteString
 pngMagicString = "\x89\x50\x4E\x47\x0D\x0A\x1A\x0A"

@@ -1,7 +1,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards   #-}
 
-module SpecPNG where
+module KPP.PNGSpec where
 
 import qualified Data.ByteString as BS
 import           Test.Hspec
@@ -9,8 +9,8 @@ import           Test.Hspec
 import           Common
 import           KPP.PNG
 
-spec_PNG :: Spec
-spec_PNG = do
+spec :: Spec
+spec = do
   describe "isPngData" $ do
     it "recognizes PNG data" $ do
       png <- BS.readFile path_1px

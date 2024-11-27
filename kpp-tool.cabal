@@ -80,7 +80,10 @@ test-suite kpp-tool-test
   main-is: Spec.hs
   other-modules:
       Common
-      SpecPNG
+      KPP.AppSpec
+      KPP.PNGSpec
+      KPP.PresetSpec
+      Main
       Paths_kpp_tool
   autogen-modules:
       Paths_kpp_tool

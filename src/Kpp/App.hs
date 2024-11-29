@@ -376,7 +376,7 @@ start args = do
     hPutStr stderr $ unlines errs
     exitFailure
 
-  let settings = foldr (.) id flags $
-        RunMode defaults { runInputPath = listToMaybe posArgs }
+  let defaultMode = RunMode defaults { runInputPath = listToMaybe posArgs }
+      settings = foldr ($) defaultMode flags
 
   run settings

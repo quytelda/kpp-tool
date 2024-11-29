@@ -9,7 +9,25 @@ License     : BSD-3-Clause
 This module contains functions and data structures for parsing and
 rendering PNG files.
 -}
-module Kpp.Png where
+module Kpp.Png
+  ( runGetOrFail'
+  , pngMagicString
+  , isPngData
+  , getMagicString
+  , putMagicString
+  , getTextChunk
+  , putTextChunk
+  , getZtxtChunk
+  , putZtxtChunk
+  , getItxtChunk
+  , putItxtChunk
+  , getIhdrDimensions
+  , getKeywordChunk
+  , Chunk(..)
+  , getChunk
+  , putChunk
+  , parseSettingsXml
+  ) where
 
 import           Codec.Compression.Zlib
 import           Control.Applicative
@@ -60,13 +78,6 @@ getMagicString = expect pngMagicString
 
 putMagicString :: Put
 putMagicString = putLazyByteString pngMagicString
-
--- | Tags for PNG chunk content which are relevant for parsing KPP
--- files.
-data Chunk = VersionChunk ByteString
-           | SettingChunk ByteString
-           | RegularChunk ByteString
-           deriving (Eq, Show)
 
 getTextChunk :: ByteString -> Get ByteString
 getTextChunk key = do
@@ -132,6 +143,13 @@ getKeywordChunk :: ByteString -> Get ByteString
 getKeywordChunk key = getTextChunk key <|>
                       getZtxtChunk key <|>
                       getItxtChunk key
+
+-- | Tags for PNG chunk content which are relevant for parsing KPP
+-- files.
+data Chunk = VersionChunk ByteString
+           | SettingChunk ByteString
+           | RegularChunk ByteString
+           deriving (Eq, Show)
 
 getChunk :: Get Chunk
 getChunk = do

@@ -1,7 +1,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards   #-}
 
-module KPP.AppSpec (spec) where
+module Kpp.AppSpec (spec) where
 
 import qualified Crypto.Hash.MD5      as MD5
 import qualified Data.ByteString      as BS
@@ -14,8 +14,8 @@ import           System.FilePath
 import           Test.Hspec
 
 import           Common
-import           KPP.App
-import           KPP.Preset
+import           Kpp.App
+import           Kpp.Preset
 
 spec_FromArgument :: Spec
 spec_FromArgument = describe "FromArgument" $ do

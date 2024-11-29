@@ -2,14 +2,14 @@
 {-# LANGUAGE RecordWildCards   #-}
 
 {-|
-Module      : PNG
+Module      : Kpp.Png
 Copyright   : (c) Quytelda Kahja, 2024
 License     : BSD-3-Clause
 
 This module contains functions and data structures for parsing and
 rendering PNG files.
 -}
-module KPP.PNG where
+module Kpp.Png where
 
 import           Codec.Compression.Zlib
 import           Control.Applicative

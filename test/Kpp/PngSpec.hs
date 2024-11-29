@@ -1,14 +1,14 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards   #-}
 
-module KPP.PNGSpec (spec) where
+module Kpp.PngSpec (spec) where
 
 import qualified Data.ByteString      as BS
 import qualified Data.ByteString.Lazy as BL
 import           Test.Hspec
 
 import           Common
-import           KPP.PNG
+import           Kpp.Png
 
 spec :: Spec
 spec = do

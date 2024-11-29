@@ -2,14 +2,14 @@
 {-# LANGUAGE RecordWildCards   #-}
 
 {-|
-Module      : Preset
+Module      : Kpp.Preset
 Copyright   : (c) Quytelda Kahja, 2024
 License     : BSD-3-Clause
 
 This module contains functions and data structures for parsing,
 rendering, and manipulating brush presets (KPP files).
 -}
-module KPP.Preset
+module Kpp.Preset
   ( decodeBase16
   , encodeBase16
   , decodeBase64
@@ -63,7 +63,7 @@ import           Prettyprinter          hiding (width)
 import           System.FilePath
 import           Text.XML
 
-import           KPP.PNG
+import           Kpp.Png
 
 -- | Encode binary data into a base-16 (hex) string.
 encodeBase16 :: BS.ByteString -> Text

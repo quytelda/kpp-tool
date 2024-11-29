@@ -1,7 +1,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards   #-}
 
-module KPP.PresetSpec (spec) where
+module Kpp.PresetSpec (spec) where
 
 import           Data.Binary
 import qualified Data.ByteString      as BS
@@ -11,7 +11,7 @@ import           Data.Maybe
 import           Test.Hspec
 
 import           Common
-import           KPP.Preset
+import           Kpp.Preset
 
 spec :: Spec
 spec = describe "Preset" $ do

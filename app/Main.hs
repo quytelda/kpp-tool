@@ -4,7 +4,7 @@ module Main (main) where
 
 import System.Environment
 
-import KPP.App
+import Kpp.App
 
 main :: IO ()
 main = getArgs >>= start

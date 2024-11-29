@@ -25,9 +25,9 @@ source-repository head
 
 library
   exposed-modules:
-      KPP.App
-      KPP.PNG
-      KPP.Preset
+      Kpp.App
+      Kpp.Png
+      Kpp.Preset
   other-modules:
       Paths_kpp_tool
   autogen-modules:
@@ -80,9 +80,9 @@ test-suite kpp-tool-test
   main-is: Spec.hs
   other-modules:
       Common
-      KPP.AppSpec
-      KPP.PNGSpec
-      KPP.PresetSpec
+      Kpp.AppSpec
+      Kpp.PngSpec
+      Kpp.PresetSpec
       Main
       Paths_kpp_tool
   autogen-modules:

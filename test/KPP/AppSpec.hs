@@ -1,7 +1,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards   #-}
 
-module KPP.AppSpec where
+module KPP.AppSpec (spec) where
 
 import qualified Crypto.Hash.MD5      as MD5
 import qualified Data.ByteString      as BS

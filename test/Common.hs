@@ -1,7 +1,15 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards   #-}
 
-module Common where
+module Common
+  ( pngIHDRChunkSize
+  , testDir
+  , withTestDir
+  , path_basicEllipse
+  , path_basicShapeGrainy
+  , path_scribble
+  , path_1px
+  ) where
 
 import           Control.Exception
 import           Data.Int          (Int64)

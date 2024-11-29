@@ -1,7 +1,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards   #-}
 
-module KPP.PresetSpec where
+module KPP.PresetSpec (spec) where
 
 import           Data.Binary
 import qualified Data.ByteString      as BS

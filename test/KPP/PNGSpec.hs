@@ -1,7 +1,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards   #-}
 
-module KPP.PNGSpec where
+module KPP.PNGSpec (spec) where
 
 import qualified Data.ByteString      as BS
 import qualified Data.ByteString.Lazy as BL

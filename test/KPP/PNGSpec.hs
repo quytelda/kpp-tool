@@ -27,17 +27,29 @@ spec = do
       result <- runGetOrFail' (getTextChunk "key") bytes
       result `shouldBe` "value"
 
+  describe "putTextChunk" $ do
+    it "renders tEXt chunks" $ do
+      pending
+
   describe "getZtxtChunk" $ do
     it "parses zTXt chunks" $ do
       let bytes = "zTXtkey\NUL\NULx\156+K\204)M\ENQ\NUL\ACKj\STX\RS"
       result <- runGetOrFail' (getZtxtChunk "key") bytes
       result `shouldBe` "value"
 
+  describe "putZtxtChunk" $ do
+    it "renders zTXt chunks" $ do
+      pending
+
   describe "getItxtChunk" $ do
     it "parses iTXt chunks" $ do
       let bytes = "iTXtkey\NUL\SOH\NULen_US.UTF-8\NULkey\NULx\156+K\204)M\ENQ\NUL\ACKj\STX\RS"
       result <- runGetOrFail' (getItxtChunk "key") bytes
       result `shouldBe` "value"
+
+  describe "putItxtChunk" $ do
+    it "renders iTXt chunks" $ do
+      pending
 
   describe "getIhdrDimensions" $ do
     it "gets image dimensions" $ do
@@ -50,6 +62,10 @@ spec = do
       let bytes = "\NUL\NUL\NUL\rIHDR\NUL\NUL\NUL\SOH\NUL\NUL\NUL\SOH\b\STX\NUL\NUL\NUL\144wS\222"
       result <- runGetOrFail' getChunk bytes
       result `shouldBe` RegularChunk "IHDR\NUL\NUL\NUL\SOH\NUL\NUL\NUL\SOH\b\STX\NUL\NUL\NUL"
+
+  describe "putChunk" $ do
+    it "renders chunks" $ do
+      pending
 
   describe "parseSettingsXml" $ do
     it "parses settings XML" $ do

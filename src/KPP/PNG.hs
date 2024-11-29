@@ -66,7 +66,7 @@ putMagicString = putLazyByteString pngMagicString
 data Chunk = VersionChunk ByteString
            | SettingChunk ByteString
            | RegularChunk ByteString
-           deriving (Show)
+           deriving (Eq, Show)
 
 getTextChunk :: ByteString -> Get ByteString
 getTextChunk key = do

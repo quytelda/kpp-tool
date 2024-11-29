@@ -3,7 +3,8 @@
 
 module KPP.PNGSpec where
 
-import qualified Data.ByteString as BS
+import qualified Data.ByteString      as BS
+import qualified Data.ByteString.Lazy as BL
 import           Test.Hspec
 
 import           Common
@@ -34,16 +35,24 @@ spec = do
 
   describe "getItxtChunk" $ do
     it "parses iTXt chunks" $ do
-      pending
+      let bytes = "iTXtkey\NUL\SOH\NULen_US.UTF-8\NULkey\NULx\156+K\204)M\ENQ\NUL\ACKj\STX\RS"
+      result <- runGetOrFail' (getItxtChunk "key") bytes
+      result `shouldBe` "value"
 
   describe "getIhdrDimensions" $ do
     it "gets image dimensions" $ do
-      pending
+      let bytes = "IHDR\NUL\NUL\NUL\200\NUL\NUL\NUL\200\b\ACK\NUL\NUL\NUL"
+      result <- runGetOrFail' getIhdrDimensions bytes
+      result `shouldBe` (200, 200)
 
   describe "getChunk" $ do
     it "parses chunks" $ do
-      pending
+      let bytes = "\NUL\NUL\NUL\rIHDR\NUL\NUL\NUL\SOH\NUL\NUL\NUL\SOH\b\STX\NUL\NUL\NUL\144wS\222"
+      result <- runGetOrFail' getChunk bytes
+      result `shouldBe` RegularChunk "IHDR\NUL\NUL\NUL\SOH\NUL\NUL\NUL\SOH\b\STX\NUL\NUL\NUL"
 
   describe "parseSettingsXml" $ do
     it "parses settings XML" $ do
-      pending
+      xml    <- BL.readFile "kpp/basic-ellipse.xml"
+      result <- BL.readFile path_basicEllipse >>= parseSettingsXml
+      xml `shouldBe` result

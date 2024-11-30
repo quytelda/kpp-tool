@@ -11,6 +11,7 @@ rendering PNG files.
 -}
 module Kpp.Png
   ( runGetOrFail'
+  , runPut
   , pngMagicString
   , isPngData
   , getMagicString

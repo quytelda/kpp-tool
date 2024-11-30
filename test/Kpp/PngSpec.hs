@@ -29,7 +29,8 @@ spec = do
 
   describe "putTextChunk" $ do
     it "renders tEXt chunks" $ do
-      pending
+      let result = runPut (putTextChunk "key" "value")
+      result `shouldBe` "tEXtkey\NULvalue"
 
   describe "getZtxtChunk" $ do
     it "parses zTXt chunks" $ do
@@ -39,7 +40,8 @@ spec = do
 
   describe "putZtxtChunk" $ do
     it "renders zTXt chunks" $ do
-      pending
+      let result = runPut (putZtxtChunk "key" "value")
+      result `shouldBe` "zTXtkey\NUL\NULx\156+K\204)M\ENQ\NUL\ACKj\STX\RS"
 
   describe "getItxtChunk" $ do
     it "parses iTXt chunks" $ do
@@ -49,7 +51,8 @@ spec = do
 
   describe "putItxtChunk" $ do
     it "renders iTXt chunks" $ do
-      pending
+      let result = runPut (putItxtChunk True "key" "value")
+      result `shouldBe` "iTXtkey\NUL\SOH\NUL\NUL\NULx\156+K\204)M\ENQ\NUL\ACKj\STX\RS"
 
   describe "getIhdrDimensions" $ do
     it "gets image dimensions" $ do
@@ -65,7 +68,8 @@ spec = do
 
   describe "putChunk" $ do
     it "renders chunks" $ do
-      pending
+      let result = runPut $ putChunk (RegularChunk "zTXtkey\NUL\NULx\156+K\204)M\ENQ\NUL\ACKj\STX\RS")
+      result `shouldBe` "\NUL\NUL\NUL\DC2zTXtkey\NUL\NULx\156+K\204)M\ENQ\NUL\ACKj\STX\RS\DLE\229\228\253"
 
   describe "parseSettingsXml" $ do
     it "parses settings XML" $ do

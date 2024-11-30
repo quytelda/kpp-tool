@@ -125,8 +125,8 @@ putItxtChunk compressed keyword value = do
   putLazyByteString keyword *> putNull
   put compressed -- compression
   putWord8 0 -- compression type is always 0
-  putLazyByteString "en_US.UTF-8" *> putNull -- language tag
-  putLazyByteString keyword       *> putNull -- translated keyword
+  putNull -- empty language tag
+  putNull -- empty translated keyword
   putLazyByteString $
     if compressed
     then compress value

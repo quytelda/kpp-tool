@@ -43,7 +43,7 @@ spec = do
 
   describe "getItxtChunk" $ do
     it "parses iTXt chunks" $ do
-      let bytes = "iTXtkey\NUL\SOH\NULen_US.UTF-8\NULkey\NULx\156+K\204)M\ENQ\NUL\ACKj\STX\RS"
+      let bytes = "iTXtkey\NUL\SOH\NUL\NUL\NULx\156+K\204)M\ENQ\NUL\ACKj\STX\RS"
       result <- runGetOrFail' (getItxtChunk "key") bytes
       result `shouldBe` "value"
 

@@ -63,6 +63,7 @@ expect expected = do
   unless (actual == expected) $
     fail $ "expected " <> show expected
 
+-- | All PNG image files begin with this signature.
 pngMagicString :: ByteString
 pngMagicString = "\x89\x50\x4E\x47\x0D\x0A\x1A\x0A"
 
@@ -74,24 +75,29 @@ pngMagicString = "\x89\x50\x4E\x47\x0D\x0A\x1A\x0A"
 isPngData :: BS.ByteString -> Bool
 isPngData bs = BS.toStrict pngMagicString `BS.isPrefixOf` bs
 
+-- | Consume a PNG magic string or fail when the input does not match.
 getMagicString :: Get ()
 getMagicString = expect pngMagicString
 
+-- | Write a PNG signature.
 putMagicString :: Put
 putMagicString = putLazyByteString pngMagicString
 
+-- | Parse a tEXt chunk with a matching key and return its content.
 getTextChunk :: ByteString -> Get ByteString
 getTextChunk key = do
   expect "tEXt"
   expect key *> getNull
   getRemainingLazyByteString
 
+-- | Build a tEXt chunk from a given key and value.
 putTextChunk :: ByteString -> ByteString -> Put
 putTextChunk key value = do
   putLazyByteString "tEXt"
   putLazyByteString key *> putNull
   putLazyByteString value
 
+-- | Parse a zTXt chunk with a matching key and return its decompressed content.
 getZtxtChunk :: ByteString -> Get ByteString
 getZtxtChunk keyword = do
   expect "zTXt"
@@ -99,6 +105,7 @@ getZtxtChunk keyword = do
   void getWord8 -- compression type is always 0
   decompress <$> getRemainingLazyByteString
 
+-- | Build a zTXt chunk from a given key and value.
 putZtxtChunk :: ByteString -> ByteString -> Put
 putZtxtChunk key value = do
   putLazyByteString "zTXt"
@@ -106,6 +113,9 @@ putZtxtChunk key value = do
   putWord8 0 -- compression type is always 0
   putLazyByteString $ compress value
 
+-- | Parse a iTXt chunk with a matching key and return its decompressed content.
+--
+-- The language tag and translated keyword fields are ignored.
 getItxtChunk :: ByteString -> Get ByteString
 getItxtChunk keyword = do
   expect "iTXt"
@@ -120,6 +130,7 @@ getItxtChunk keyword = do
            then decompress content
            else content
 
+-- | Build a (possibly compressed) iTXt chunk from a given key and value.
 putItxtChunk :: Bool -> ByteString -> ByteString -> Put
 putItxtChunk compressed keyword value = do
   putLazyByteString "iTXt"
@@ -133,6 +144,7 @@ putItxtChunk compressed keyword value = do
     then compress value
     else value
 
+-- | Extract the width and height of an image from an IHDR chunk.
 getIhdrDimensions :: Get (Word32, Word32)
 getIhdrDimensions = do
   expect "IHDR"
@@ -140,6 +152,8 @@ getIhdrDimensions = do
   height <- getWord32be
   return (width, height)
 
+-- | Parse any tEXt, zTXt, or iTXt chunk with a matching keyword and
+-- return its content.
 getKeywordChunk :: ByteString -> Get ByteString
 getKeywordChunk key = getTextChunk key <|>
                       getZtxtChunk key <|>
@@ -152,6 +166,9 @@ data Chunk = VersionChunk ByteString
            | RegularChunk ByteString
            deriving (Eq, Show)
 
+-- | Parse a single Chunk from a PNG data stream.
+--
+-- Fail if the checksum verification is unsuccessful.
 getChunk :: Get Chunk
 getChunk = do
   chunkLength <- getWord32be
@@ -166,6 +183,7 @@ getChunk = do
                    SettingChunk <$> getKeywordChunk "preset"  <|>
                    RegularChunk <$> getRemainingLazyByteString
 
+-- | Render a complete PNG binary chunk.
 putChunk :: Chunk -> Put
 putChunk chunk = do
   putWord32be chunkLength

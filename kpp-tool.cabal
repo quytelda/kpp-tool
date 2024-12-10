@@ -77,13 +77,13 @@ executable kpp-tool
 
 test-suite kpp-tool-test
   type: exitcode-stdio-1.0
-  main-is: Spec.hs
+  main-is: Main.hs
   other-modules:
       Common
       Kpp.AppSpec
       Kpp.PngSpec
       Kpp.PresetSpec
-      Main
+      Spec
       Paths_kpp_tool
   autogen-modules:
       Paths_kpp_tool

@@ -4,7 +4,7 @@ github:              "quytelda/kpp-tool"
 license:             BSD-3-Clause
 author:              "Quytelda Kahja"
 maintainer:          "quytelda@tamalin.org"
-copyright:           "Copyright 2023 Quytelda Kahja"
+copyright:           "Copyright 2023-2024 Quytelda Kahja"
 
 extra-source-files:
 - README.md

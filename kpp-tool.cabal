@@ -11,7 +11,7 @@ homepage:       https://github.com/quytelda/kpp-tool#readme
 bug-reports:    https://github.com/quytelda/kpp-tool/issues
 author:         Quytelda Kahja
 maintainer:     quytelda@tamalin.org
-copyright:      Copyright 2023 Quytelda Kahja
+copyright:      Copyright 2023-2024 Quytelda Kahja
 license:        BSD-3-Clause
 license-file:   LICENSE
 build-type:     Simple

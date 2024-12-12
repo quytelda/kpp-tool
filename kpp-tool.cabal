@@ -5,7 +5,7 @@ cabal-version: 2.2
 -- see: https://github.com/sol/hpack
 
 name:           kpp-tool
-version:        0.1.0.0
+version:        1.0.0
 description:    Please see the README on GitHub at <https://github.com/quytelda/kpp-tool#readme>
 homepage:       https://github.com/quytelda/kpp-tool#readme
 bug-reports:    https://github.com/quytelda/kpp-tool/issues

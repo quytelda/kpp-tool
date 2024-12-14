@@ -124,10 +124,7 @@ attributeText name Element{..} =
 
 -- | Get all the content nodes inside an element and combine them.
 contentText :: Element -> Either String Text
-contentText (Element _ _ nodes) =
-  case [text | NodeContent text <- nodes] of
-    [] -> Left "element has no text content"
-    ts -> Right $ T.concat ts
+contentText (Element _ _ nodes) = pure $ T.concat [text | NodeContent text <- nodes]
 
 -- | Select the element children of a given `Element`.
 childElements :: Element -> [Element]

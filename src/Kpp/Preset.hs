@@ -19,6 +19,7 @@ module Kpp.Preset
   , ParamValue(..)
   , prettyParam
   , prettyParams
+  , FilterConfig(..)
   , Resource(..)
   , resourceMD5
   , prettyResources
@@ -198,6 +199,40 @@ renderXml_param key val =
 
 renderXml_params :: Map Text ParamValue -> [Element]
 renderXml_params = Map.elems . Map.mapWithKey renderXml_param
+
+-- | `FilterConfig` represents the serialized settings for a filter.
+--
+-- @<filterconfig>@ elements appears in filter preset settings and
+-- contain a list of parameters. Acceptable versions seem to be "1"
+-- and "2" as of Dec. 2024.
+--
+-- Note: Some parameters might be missing the type attribute.
+data FilterConfig = FilterConfig
+  { filterVersion :: !Text
+  , filterParams  :: !(Map Text ParamValue)
+  } deriving (Eq, Show)
+
+instance Pretty FilterConfig where
+  pretty FilterConfig{..} =
+    parens ("version=" <> viaShow filterVersion)
+    <\> prettyParams filterParams
+
+parseXml_filterconfig :: Element -> Either String FilterConfig
+parseXml_filterconfig e@(Element "filterconfig" attrs _) = do
+  filterVersion <- case Map.lookup "version" attrs of
+    Just v  -> Right v
+    Nothing -> Left "<filterconfig> is missing version attribute"
+  filterParams <- Map.fromList <$> traverse parseXml_param (childElements e)
+  return FilterConfig{..}
+parseXml_filterconfig _ = Left "expected <filterconfig> element"
+
+renderXml_filterconfig :: FilterConfig -> Element
+renderXml_filterconfig FilterConfig{..} =
+  let elementName       = "filterconfig"
+      elementNodes      = NodeElement <$> renderXml_params filterParams
+      elementAttributes = Map.fromList [ ("version", filterVersion) ]
+  in Element{..}
+
 
 -- | 'Resource' is a type for embedded resources.
 data Resource = Resource { resourceName :: !Text

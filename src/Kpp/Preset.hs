@@ -43,7 +43,6 @@ module Kpp.Preset
 import           Control.Applicative
 import           Control.Monad
 import qualified Crypto.Hash.MD5        as MD5
-import           Data.Bifunctor         (first)
 import           Data.Binary
 import           Data.Binary.Get
 import           Data.Binary.Put
@@ -55,7 +54,7 @@ import qualified Data.ByteString.Lazy   as BL
 import           Data.Foldable
 import           Data.Map.Strict        (Map)
 import qualified Data.Map.Strict        as Map
-import           Data.Maybe             (fromMaybe)
+import           Data.Maybe
 import           Data.Text              (Text)
 import qualified Data.Text              as T
 import           Data.Text.Encoding
@@ -318,6 +317,7 @@ data Preset = Preset
   , presetName        :: !Text
   , presetPaintop     :: !Text
   , presetParams      :: !(Map Text ParamValue)
+  , presetFilter      :: !(Maybe FilterConfig)
   , embeddedResources :: !(Map Text Resource)
   , presetIcon        :: ![ByteString]
   } deriving (Eq, Show)
@@ -339,6 +339,7 @@ instance Pretty Preset where
          , "icon:"    <+> pretty width <> "x" <> pretty height
          ]
     <\\> nest 2 ("Parameters:"          <\> prettyParams    presetParams)
+    <\\> nest 2 ("Filter Settings:"     <\> pretty presetFilter)
     <\\> nest 2 ("Embedded Resources:"  <\> prettyResources embeddedResources)
     where
       (width, height) = presetIconDimensions preset
@@ -353,8 +354,15 @@ parseXml_Preset presetVersion presetIcon e@(Element "Preset" _ _) = do
     Right val -> Just <$> decodeInt val
     _         -> pure Nothing
 
-  (presetParams, embeddedResources) <- first Map.fromList <$>
-    foldM addChild (mempty, mempty) (childElements e)
+  -- TODO: This function is too complicated and should be refactored.
+  -- Maybe using conduits can simplify the parsing and make it more efficient.
+  (presetParams,
+   filterConfigs,
+   embeddedResources) <- foldM addChild (mempty, mempty, mempty) (childElements e)
+  let presetFilter = case filterConfigs of
+        []   -> Nothing
+        [fc] -> Just fc
+        _    -> error "found multiple <filterconfig> elements"
 
   -- If an expected resource count is provided we check it for
   -- accuracy; otherwise we can only assume all resources are present.
@@ -362,9 +370,12 @@ parseXml_Preset presetVersion presetIcon e@(Element "Preset" _ _) = do
     then Right Preset{..}
     else Left "resource count mismatch"
   where
-    addChild (xs, ys) child =
-      ((\x -> (x:xs,      ys)) <$> parseXml_param     child) <>
-      ((\y -> (  xs, y <> ys)) <$> parseXml_resources child)
+    elemTag = T.unpack . nameLocalName . elementName
+    addChild (xs, ys, zs) child =
+      ((\(k,v) -> (Map.insert k v xs,   ys,      zs)) <$> parseXml_param        child) <>
+      ((\y     -> (               xs, y:ys,      zs)) <$> parseXml_filterconfig child) <>
+      ((\z     -> (               xs,   ys, z <> zs)) <$> parseXml_resources    child) <>
+      Left ("unrecognized <" <> elemTag child <> "> element")
 parseXml_Preset _ _ _ = Left "expected <Preset> element"
 
 -- | Generate an XML @<Preset>@ element.
@@ -372,9 +383,10 @@ renderXml_Preset :: Preset -> Element
 renderXml_Preset Preset{..} =
   let paramNodes        = renderXml_params    presetParams
       resourcesNode     = renderXml_resources embeddedResources
+      filterNodes       = renderXml_filterconfig <$> maybeToList presetFilter
       resourceCount     = T.pack $ show $ length embeddedResources
       elementName       = "Preset"
-      elementNodes      = NodeElement <$> resourcesNode : paramNodes
+      elementNodes      = NodeElement <$> resourcesNode : paramNodes <> filterNodes
       elementAttributes = Map.fromList [ ("name",      presetName)
                                        , ("paintopid", presetPaintop)
                                        , ("embedded_resources", resourceCount)

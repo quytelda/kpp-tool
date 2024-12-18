@@ -153,7 +153,11 @@ prettyByteData bytes
 --   * "string" (for textual data)
 --   * "internal" (no specific QVariant wrapper?)
 --   * "bytearray" (for binary data encoded in base64)
-data ParamValue = String   !Text
+--
+-- However, sometimes the @type@ attribute is missing in older presets
+-- or in some filter settings. For these cases, the type is unknown.
+data ParamValue = Unknown  !Text
+                | String   !Text
                 | Internal !Text
                 | Binary   !BS.ByteString
                 deriving (Eq, Show)
@@ -162,6 +166,7 @@ instance Pretty ParamValue where
   pretty (String   val) = dquotes  (pretty val)
   pretty (Internal val) = squotes  (pretty val)
   pretty (Binary   val) = brackets (prettyByteData val)
+  pretty (Unknown  val) = braces   (pretty val)
 
 -- | Pretty printer for parameters.
 --
@@ -170,30 +175,30 @@ prettyParam :: Text -> ParamValue -> Doc ann
 prettyParam key val = pretty key <> ":" <+> pretty val
 
 parseXml_param :: Element -> Either String (Text, ParamValue)
-parseXml_param e@(Element "param" _ _) = do
+parseXml_param e@(Element "param" attrs _) = do
   paramName <- attributeText "name" e
-  paramType <- attributeText "type" e
   paramData <- contentText e
 
-  paramValue <- case paramType of
-    "string"    -> String   <$> pure         paramData
-    "internal"  -> Internal <$> pure         paramData
-    "bytearray" -> Binary   <$> decodeBase64 paramData
-    _           -> Left $ "unknown param type: " <> show paramType
+  paramValue <- case Map.lookup "type" attrs of
+    Nothing          -> Unknown  <$> pure         paramData
+    Just "string"    -> String   <$> pure         paramData
+    Just "internal"  -> Internal <$> pure         paramData
+    Just "bytearray" -> Binary   <$> decodeBase64 paramData
+    Just paramType   -> Left $ "unrecognized param type: " <> show paramType
   return (paramName, paramValue)
 parseXml_param _ = Left "expected <param> element"
 
 renderXml_param :: Text -> ParamValue -> Element
 renderXml_param key val =
   let (paramType, paramData) = case val of
-        String   v -> ("string",    v)
-        Internal v -> ("internal",  v)
-        Binary   v -> ("bytearray", encodeBase64 v)
+        Unknown  v -> (Nothing,          v)
+        String   v -> (Just "string",    v)
+        Internal v -> (Just "internal",  v)
+        Binary   v -> (Just "bytearray", encodeBase64 v)
       elementName       = "param"
       elementNodes      = [NodeContent paramData]
-      elementAttributes = Map.fromList [ ("name", key)
-                                       , ("type", paramType)
-                                       ]
+      elementAttributes = Map.fromList $ [("name", key)]
+                          <> maybe empty (\t -> [("type", t)]) paramType
   in Element{..}
 
 renderXml_params :: Map Text ParamValue -> [Element]

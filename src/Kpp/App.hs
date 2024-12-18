@@ -93,6 +93,7 @@ instance FromArgument Text where
 
 instance FromArgument ParamValue where
   fromArgument arg = case breakOn ':' arg of
+    Just ("notype",   val) -> Right $ Unknown (T.pack val)
     Just ("string",   val) -> Right $ String (T.pack val)
     Just ("internal", val) -> Right $ Internal (T.pack val)
     Just ("binary",   val) -> Binary <$> decodeBase64 (T.pack val)

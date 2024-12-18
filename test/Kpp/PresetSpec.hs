@@ -55,6 +55,37 @@ spec = describe "Preset" $ do
       Map.lookup "ColorSource/Type" presetParams `shouldBe` Just (String   "plain")
       Map.lookup "EraserMode"       presetParams `shouldBe` Just (Internal "false")
 
+    specify "can parse filter settings" $ \preset -> do
+      presetFilter preset `shouldBe` Nothing
+
+      let params =
+            [ ("blackvalue",         Internal "7")
+            , ("channel_0",          String "0;1;1;0;1")
+            , ("channel_1",          String "0;1;1;0;1")
+            , ("channel_2",          String "0;1;1;0;1")
+            , ("channel_3",          String "0;1;1;0;1")
+            , ("channel_4",          String "0;1;1;0;1")
+            , ("channel_5",          String "0;1;1;0;1")
+            , ("channel_6",          String "0;1;1;0;1")
+            , ("channel_7",          String "0;1;1;0;1")
+            , ("gammavalue",         Internal "0.681020988537474")
+            , ("histogram_mode",     String "linear")
+            , ("lightness",          String "0.0277777777777778;1;0.681020988537474;\
+                                            \0.0925925925925926;0.580246913580247")
+            , ("mode",               String "lightness")
+            , ("number_of_channels", String "8")
+            , ("outblackvalue",      Internal "24")
+            , ("outwhitevalue",      Internal "148")
+            , ("whitevalue",         Internal "255")
+            ]
+          filterConfig = FilterConfig "2" (Map.fromList params)
+
+      levelsKpp <- loadPreset path_levels
+      presetFilter levelsKpp `shouldBe` Just filterConfig
+
+    specify "can render filter settings" $ \_ -> do
+      pending
+
     specify "can parse embedded resources" $ \Preset{..} -> do
       -- The example has 2 embedded resources: a brush and a pattern.
       length embeddedResources `shouldBe` 2

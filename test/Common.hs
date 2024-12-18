@@ -7,6 +7,7 @@ module Common
   , withTestDir
   , path_basicEllipse
   , path_basicShapeGrainy
+  , path_levels
   , path_scribble
   , path_1px
   ) where
@@ -38,6 +39,9 @@ path_basicEllipse = "kpp/basic-ellipse.kpp"
 
 path_basicShapeGrainy :: FilePath
 path_basicShapeGrainy = "kpp/basic-shape-grainy.kpp"
+
+path_levels :: FilePath
+path_levels = "kpp/levels.kpp"
 
 path_scribble :: FilePath
 path_scribble = "png/scribble.png"

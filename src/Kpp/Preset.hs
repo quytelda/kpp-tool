@@ -331,10 +331,15 @@ data Preset = Preset
 prettyParams :: Map Text ParamValue -> Doc ann
 prettyParams = concatWith (<\>) . Map.mapWithKey prettyParam
 
+-- | Format an optional table of filter settings.
+prettyFilter :: Maybe FilterConfig -> Doc ann
+prettyFilter Nothing             = "None"
+prettyFilter (Just filterConfig) = pretty filterConfig
+
 -- | Format a table of embedded resource entries.
 prettyResources :: Map Text Resource -> Doc ann
-prettyResources m | Map.null m = "No Resources"
-                  | otherwise  = concatWith (<\\>) $ pretty <$> m
+prettyResources m | null m    = "None"
+                  | otherwise = concatWith (<\\>) $ pretty <$> m
 
 instance Pretty Preset where
   pretty preset@Preset{..} =
@@ -344,7 +349,7 @@ instance Pretty Preset where
          , "icon:"    <+> pretty width <> "x" <> pretty height
          ]
     <\\> nest 2 ("Parameters:"          <\> prettyParams    presetParams)
-    <\\> nest 2 ("Filter Settings:"     <\> pretty presetFilter)
+    <\\> nest 2 ("Filter Settings:"     <\> prettyFilter    presetFilter)
     <\\> nest 2 ("Embedded Resources:"  <\> prettyResources embeddedResources)
     where
       (width, height) = presetIconDimensions preset

@@ -58,30 +58,8 @@ spec = describe "Preset" $ do
     specify "can parse filter settings" $ \preset -> do
       presetFilter preset `shouldBe` Nothing
 
-      let params =
-            [ ("blackvalue",         Internal "7")
-            , ("channel_0",          Unknown "0;1;1;0;1")
-            , ("channel_1",          Unknown "0;1;1;0;1")
-            , ("channel_2",          Unknown "0;1;1;0;1")
-            , ("channel_3",          Unknown "0;1;1;0;1")
-            , ("channel_4",          Unknown "0;1;1;0;1")
-            , ("channel_5",          Unknown "0;1;1;0;1")
-            , ("channel_6",          Unknown "0;1;1;0;1")
-            , ("channel_7",          Unknown "0;1;1;0;1")
-            , ("gammavalue",         Internal "0.681020988537474")
-            , ("histogram_mode",     Unknown "linear")
-            , ("lightness",          Unknown "0.0277777777777778;1;0.681020988537474;\
-                                             \0.0925925925925926;0.580246913580247")
-            , ("mode",               Unknown "lightness")
-            , ("number_of_channels", Unknown "8")
-            , ("outblackvalue",      Internal "24")
-            , ("outwhitevalue",      Internal "148")
-            , ("whitevalue",         Internal "255")
-            ]
-          filterConfig = FilterConfig "2" (Map.fromList params)
-
       levelsKpp <- loadPreset path_levels
-      presetFilter levelsKpp `shouldBe` Just filterConfig
+      presetFilter levelsKpp `shouldBe` Just levelsFilterConfig
 
     specify "can render filter settings" $ \_ -> do
       pending

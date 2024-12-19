@@ -8,6 +8,7 @@ import qualified Data.ByteString      as BS
 import qualified Data.ByteString.Lazy as BL
 import qualified Data.Map.Strict      as Map
 import           Data.Maybe
+import           System.FilePath
 import           Test.Hspec
 
 import           Common
@@ -62,7 +63,10 @@ spec = describe "Preset" $ do
       presetFilter levelsKpp `shouldBe` Just levelsFilterConfig
 
     specify "can render filter settings" $ \_ -> do
-      pending
+      let file = testDir </> "render_filter.kpp"
+      loadPreset path_levels >>= savePreset file
+      renderFilterKpp <- loadPreset file
+      presetFilter renderFilterKpp `shouldBe` Just levelsFilterConfig
 
     specify "can parse embedded resources" $ \Preset{..} -> do
       -- The example has 2 embedded resources: a brush and a pattern.

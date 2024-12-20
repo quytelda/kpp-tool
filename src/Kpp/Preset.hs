@@ -130,6 +130,14 @@ contentText (Element _ _ nodes) = pure $ T.concat [text | NodeContent text <- no
 childElements :: Element -> [Element]
 childElements e = [child | NodeElement child <- elementNodes e]
 
+-- | Check the `Element` name matches before doing some computation with it.
+withElement :: Name -> (Element -> Either String a) -> Element -> Either String a
+withElement name f e@Element{..}
+  | name == elementName = f e
+  | otherwise = Left $ T.unpack $
+    "expected \"" <> nameLocalName name        <> "\" element, " <>
+    "found \""    <> nameLocalName elementName <> "\" element"
+
 -- | Pretty printer for arbitrary blobs of binary data.
 --
 -- Small blobs are displayed normally (using show).
@@ -175,18 +183,17 @@ prettyParam :: Text -> ParamValue -> Doc ann
 prettyParam key val = pretty key <> ":" <+> pretty val
 
 parseXml_param :: Element -> Either String (Text, ParamValue)
-parseXml_param e@(Element "param" attrs _) = do
+parseXml_param = withElement "param" $ \e@Element{..} -> do
   paramName <- attributeText "name" e
   paramData <- contentText e
 
-  paramValue <- case Map.lookup "type" attrs of
+  paramValue <- case Map.lookup "type" elementAttributes of
     Nothing          -> Unknown  <$> pure         paramData
     Just "string"    -> String   <$> pure         paramData
     Just "internal"  -> Internal <$> pure         paramData
     Just "bytearray" -> Binary   <$> decodeBase64 paramData
     Just paramType   -> Left $ "unrecognized param type: " <> show paramType
   return (paramName, paramValue)
-parseXml_param _ = Left "expected <param> element"
 
 renderXml_param :: Text -> ParamValue -> Element
 renderXml_param key val =
@@ -222,13 +229,12 @@ instance Pretty FilterConfig where
     <\> prettyParams filterParams
 
 parseXml_filterconfig :: Element -> Either String FilterConfig
-parseXml_filterconfig e@(Element "filterconfig" attrs _) = do
-  filterVersion <- case Map.lookup "version" attrs of
+parseXml_filterconfig = withElement "filterconfig" $ \e@Element{..} -> do
+  filterVersion <- case Map.lookup "version" elementAttributes of
     Just v  -> Right v
     Nothing -> Left "<filterconfig> is missing version attribute"
   filterParams <- Map.fromList <$> traverse parseXml_param (childElements e)
   return FilterConfig{..}
-parseXml_filterconfig _ = Left "expected <filterconfig> element"
 
 renderXml_filterconfig :: FilterConfig -> Element
 renderXml_filterconfig FilterConfig{..} =
@@ -275,7 +281,7 @@ saveResource mpath Resource{..} = do
   return path
 
 parseXml_resource :: Element -> Either String Resource
-parseXml_resource e@(Element "resource" _ _) = do
+parseXml_resource = withElement "resource" $ \e -> do
   resourceName <- attributeText "name"     e
   resourceType <- attributeText "type"     e
   resourceFile <- attributeText "filename" e
@@ -286,7 +292,6 @@ parseXml_resource e@(Element "resource" _ _) = do
   if resourceCsum == MD5.hash resourceData
     then Right Resource{..}
     else Left $ "checksum mismatch for resource: " <> show resourceName
-parseXml_resource _ = Left "expected <resource> element"
 
 renderXml_resource :: Resource -> Element
 renderXml_resource Resource{..} =
@@ -303,10 +308,9 @@ renderXml_resource Resource{..} =
 -- | Parse a @<resources>@ XML element, which should contain a list of
 -- all embedded resources.
 parseXml_resources :: Element -> Either String (Map Text Resource)
-parseXml_resources e@(Element "resources" _ _) = do
+parseXml_resources = withElement "resources" $ \e -> do
   resources <- forM (childElements e) parseXml_resource
   return $ Map.fromList $ zip (resourceName <$> resources) resources
-parseXml_resources _ = Left "expected <resources> element"
 
 renderXml_resources :: Map Text Resource -> Element
 renderXml_resources rs =
@@ -357,7 +361,7 @@ instance Pretty Preset where
 -- | Parse a @<Preset>@ XML element, which should be the root element
 -- of the preset settings document.
 parseXml_Preset :: BS.ByteString -> [ByteString] -> Element -> Either String Preset
-parseXml_Preset presetVersion presetIcon e@(Element "Preset" _ _) = do
+parseXml_Preset presetVersion presetIcon = withElement "Preset" $ \e -> do
   presetName    <- attributeText "name"      e
   presetPaintop <- attributeText "paintopid" e
   resourceCount <- case attributeText "embedded_resources" e of
@@ -386,7 +390,6 @@ parseXml_Preset presetVersion presetIcon e@(Element "Preset" _ _) = do
       ((\y     -> (               xs, y:ys,      zs)) <$> parseXml_filterconfig child) <>
       ((\z     -> (               xs,   ys, z <> zs)) <$> parseXml_resources    child) <>
       Left ("unrecognized <" <> elemTag child <> "> element")
-parseXml_Preset _ _ _ = Left "expected <Preset> element"
 
 -- | Generate an XML @<Preset>@ element.
 renderXml_Preset :: Preset -> Element

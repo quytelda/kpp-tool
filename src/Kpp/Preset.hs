@@ -229,11 +229,9 @@ instance Pretty FilterConfig where
     <\> prettyParams filterParams
 
 parseXml_filterconfig :: Element -> Either String FilterConfig
-parseXml_filterconfig = withElement "filterconfig" $ \e@Element{..} -> do
-  filterVersion <- case Map.lookup "version" elementAttributes of
-    Just v  -> Right v
-    Nothing -> Left "<filterconfig> is missing version attribute"
-  filterParams <- Map.fromList <$> traverse parseXml_param (childElements e)
+parseXml_filterconfig = withElement "filterconfig" $ \e-> do
+  filterVersion <- attributeText "version" e
+  filterParams  <- Map.fromList <$> traverse parseXml_param (childElements e)
   return FilterConfig{..}
 
 renderXml_filterconfig :: FilterConfig -> Element
@@ -364,32 +362,34 @@ parseXml_Preset :: BS.ByteString -> [ByteString] -> Element -> Either String Pre
 parseXml_Preset presetVersion presetIcon = withElement "Preset" $ \e -> do
   presetName    <- attributeText "name"      e
   presetPaintop <- attributeText "paintopid" e
-  resourceCount <- case attributeText "embedded_resources" e of
-    Right val -> Just <$> decodeInt val
-    _         -> pure Nothing
 
-  -- TODO: This function is too complicated and should be refactored.
-  -- Maybe using conduits can simplify the parsing and make it more efficient.
-  (presetParams,
-   filterConfigs,
-   embeddedResources) <- foldM addChild (mempty, mempty, mempty) (childElements e)
-  let presetFilter = case filterConfigs of
-        []   -> Nothing
-        [fc] -> Just fc
-        _    -> error "found multiple <filterconfig> elements"
+  (presetParams, presetFilter, embeddedResources) <- foldM
+    (\(params, filters, resources) child ->
+        case elementName child of
+          "param"        -> do
+            (k,v) <- parseXml_param child
+            pure (Map.insert k v params, filters, resources)
+          "filterconfig" -> do
+            filterConfig <- parseXml_filterconfig child
+            if null filters
+              then pure (params, Just filterConfig, resources)
+              else Left "found multiple <filterconfig> elements"
+          "resources"    -> do
+            resourceMap <- parseXml_resources child
+            pure (params, filters, resourceMap <> resources)
+          name           -> Left $ "unrecognized element: " <> T.unpack (nameLocalName name)
+    ) (mempty, empty, mempty) (childElements e)
 
   -- If an expected resource count is provided we check it for
   -- accuracy; otherwise we can only assume all resources are present.
-  if all (== Map.size embeddedResources) resourceCount
-    then Right Preset{..}
-    else Left "resource count mismatch"
-  where
-    elemTag = T.unpack . nameLocalName . elementName
-    addChild (xs, ys, zs) child =
-      ((\(k,v) -> (Map.insert k v xs,   ys,      zs)) <$> parseXml_param        child) <>
-      ((\y     -> (               xs, y:ys,      zs)) <$> parseXml_filterconfig child) <>
-      ((\z     -> (               xs,   ys, z <> zs)) <$> parseXml_resources    child) <>
-      Left ("unrecognized <" <> elemTag child <> "> element")
+  case Map.lookup "embedded_resources" (elementAttributes e) of
+    Just val -> do
+      resourceCount <- decodeInt val
+      unless (resourceCount == Map.size embeddedResources) $
+        Left "resource count mismatch"
+    Nothing -> pure ()
+
+  return Preset{..}
 
 -- | Generate an XML @<Preset>@ element.
 renderXml_Preset :: Preset -> Element

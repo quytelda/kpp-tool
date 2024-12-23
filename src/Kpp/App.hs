@@ -287,7 +287,7 @@ options = [ Option "h" ["help"]
             "Display version information."
           , Option "d" ["dump-xml"]
             (ReqArg (setMode . XmlMode) "PATH")
-            "Dump a preset's XML settings."
+            "Dump a preset's XML settings to standard output."
 
           -- Global Options
           , Option "O" ["overwrite"]
@@ -337,8 +337,7 @@ options = [ Option "h" ["help"]
             (OptArg  (addOperation . op_extractAll . fromArgumentOptional) "DIR")
             "Extract all embedded resources.\n\
             \If the optional directory path argument is provided,\n\
-            \the extracted files will be placed in DIR. In this case,\n\
-            \the '=' sign syntax is required."
+            \the extracted files will be placed in DIR."
           , Option "e" ["embed"]
             (ReqArg (addOperation . op_embed . fromArgument_) "KEY=VALUE[,...]")
             "Insert or update a resource file."
@@ -348,7 +347,7 @@ options = [ Option "h" ["help"]
           , Option "C" ["set-icon"]
             (ReqArg (addOperation . op_setIcon . fromArgument_) "PATH")
             "Change a preset's icon image.\n\
-            \FILE must be a PNG file."
+            \FILE must be a PNG or KPP file."
           ]
 
 -- | Run the program with a given configuration.

@@ -17,13 +17,16 @@ kpp-tool [FLAGS] [KPP_FILE]
 where `KPP_FILE` is the path to a preset file. If no path is provided,
 the program will attempt to read a file from `stdin`.
 
-There are generally two kinds of command line flags:
+There are generally three kinds of command line flags:
 
-1. Operation flags correspond to specific actions the program can take
+1. Mode flags select special alternative program modes like "help
+   mode" or "dump xml mode". Only one mode can be selected for a given
+   program invocation.
+2. Operation flags correspond to specific actions the program can take
    with a preset, such as looking up properties or changing the
    preset's name. These flags are executed in the order they are
    provided.
-2. Global flags configure global program settings that affect all
+3. Global flags configure global program settings that affect all
    operations, like enabling overwrite mode. The position and order of
    these flags does not matter - they can appear anywhere on the
    command line.
@@ -69,15 +72,21 @@ $ kpp-tool --set-param CompositeOp=string:multiply \
            --set-param CompositeOp=string:soft_light_svg \
            --output preset_softlight.kpp \
            preset.kpp
+
+# Extract the raw XML settings document from a preset file.
+$ kpp-tool --dump-xml preset.kpp
 ```
 
 ## Options
 
 The full list of supported command line flags is as follows:
 
+### Modes
+
 ```
 -h                  --help                      Display help and usage information.
 -v                  --version                   Display version information.
+-d PATH             --dump-xml=PATH             Dump a preset's XML settings to standard output.
 ```
 
 ### Global Options
@@ -98,16 +107,20 @@ The full list of supported command line flags is as follows:
 -S                  --sync-name                 Change a preset's metadata name to match it's filename.
                                                 For example, 'kpp-tool --sync-name foobar.kpp' will change
                                                 the preset's name to "foobar".
+-l                  --list-params               Print a table of all parameters.
 -p KEY              --get-param=KEY             Print the value of a single parameter.
 -P KEY=TYPE:VALUE   --set-param=KEY=TYPE:VALUE  Set the value of a parameter.
                                                 TYPE can be 'string', 'internal', or 'binary'.
                                                 For binary parameters, VALUE should be encoded in base-64.
+-r                  --list-resources            Print a table of all embedded resources.
 -x KEY=VALUE[,...]  --extract=KEY=VALUE[,...]   Extract an embedded resource.
--X                  --extract-all               Extract all embedded resources.
+-X[DIR]             --extract-all[=DIR]         Extract all embedded resources.
+                                                If the optional directory path argument is provided,
+                                                the extracted files will be placed in DIR.
 -e KEY=VALUE[,...]  --embed=KEY=VALUE[,...]     Insert or update a resource file.
 -c PATH             --get-icon=PATH             Extract a preset's PNG icon image.
 -C PATH             --set-icon=PATH             Change a preset's icon image.
-                                                FILE must be a PNG file.
+                                                FILE must be a PNG or KPP file.
 ```
 
 # Building

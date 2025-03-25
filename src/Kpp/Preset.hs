@@ -1,3 +1,4 @@
+{-# LANGUAGE FlexibleContexts  #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards   #-}
 
@@ -42,6 +43,7 @@ module Kpp.Preset
 
 import           Control.Applicative
 import           Control.Monad
+import           Control.Monad.Except
 import qualified Crypto.Hash.MD5        as MD5
 import           Data.Binary
 import           Data.Binary.Get
@@ -70,8 +72,8 @@ encodeBase16 :: BS.ByteString -> Text
 encodeBase16 = decodeUtf8 . Base16.encode
 
 -- | Decode a base-16 (hex) string into binary data.
-decodeBase16 :: Text -> Either String BS.ByteString
-decodeBase16 = Base16.decode . encodeUtf8
+decodeBase16 :: MonadError String m => Text -> m BS.ByteString
+decodeBase16 = liftEither . Base16.decode . encodeUtf8
 
 -- | Encode binary data into a base-64 string.
 encodeBase64 :: BS.ByteString -> Text
@@ -83,11 +85,11 @@ encodeBase64 = decodeUtf8 . Base64.encode
 -- twice. I don't know if that is intentional or a bug since there is
 -- no obvious pattern to which data is double encoded. Therefore, we
 -- try base64-decoding all encoded data twice if possible.
-decodeBase64 :: Text -> Either String BS.ByteString
+decodeBase64 :: MonadError String m => Text -> m BS.ByteString
 decodeBase64 t =
   let bs1 = Base64.decode $ encodeUtf8 t
       bs2 = Base64.decode =<< bs1
-  in bs2 <> bs1
+  in liftEither $ bs2 <> bs1
 
 -- | Calculate an MD5 checksum.
 --
@@ -111,19 +113,19 @@ x <\\> y = x <> line <> line <> y
 -- | Helper function to parse an Int from a Text value.
 --
 -- Note: This function fails if unconsumed data remains after parsing.
-decodeInt :: Text -> Either String Int
+decodeInt :: MonadError String m => Text -> m Int
 decodeInt t = case Read.decimal t of
-    Right (n, "") -> Right n
-    _             -> Left "input contains non-decimal digits"
+    Right (n, "") -> pure n
+    _             -> throwError "input contains non-decimal digits"
 
-attributeText :: Name -> Element -> Either String Text
+attributeText :: MonadError String m => Name -> Element -> m Text
 attributeText name Element{..} =
   case Map.lookup name elementAttributes of
-    Just v  -> Right v
-    Nothing -> Left $ "missing attribute: " <> (show $ nameLocalName name)
+    Just v  -> pure v
+    Nothing -> throwError $ "missing attribute: " <> show (nameLocalName name)
 
 -- | Get all the content nodes inside an element and combine them.
-contentText :: Element -> Either String Text
+contentText :: Applicative f => Element -> f Text
 contentText (Element _ _ nodes) = pure $ T.concat [text | NodeContent text <- nodes]
 
 -- | Select the element children of a given `Element`.
@@ -131,10 +133,10 @@ childElements :: Element -> [Element]
 childElements e = [child | NodeElement child <- elementNodes e]
 
 -- | Check the `Element` name matches before doing some computation with it.
-withElement :: Name -> (Element -> Either String a) -> Element -> Either String a
+withElement :: MonadError String m => Name -> (Element -> m a) -> Element -> m a
 withElement name f e@Element{..}
   | name == elementName = f e
-  | otherwise = Left $ T.unpack $
+  | otherwise = throwError $ T.unpack $
     "expected \"" <> nameLocalName name        <> "\" element, " <>
     "found \""    <> nameLocalName elementName <> "\" element"
 
@@ -182,7 +184,7 @@ instance Pretty ParamValue where
 prettyParam :: Text -> ParamValue -> Doc ann
 prettyParam key val = pretty key <> ":" <+> pretty val
 
-parseXml_param :: Element -> Either String (Text, ParamValue)
+parseXml_param :: MonadError String m => Element -> m (Text, ParamValue)
 parseXml_param = withElement "param" $ \e@Element{..} -> do
   paramName <- attributeText "name" e
   paramData <- contentText e
@@ -192,7 +194,7 @@ parseXml_param = withElement "param" $ \e@Element{..} -> do
     Just "string"    -> String   <$> pure         paramData
     Just "internal"  -> Internal <$> pure         paramData
     Just "bytearray" -> Binary   <$> decodeBase64 paramData
-    Just paramType   -> Left $ "unrecognized param type: " <> show paramType
+    Just paramType   -> throwError $ "unrecognized param type: " <> show paramType
   return (paramName, paramValue)
 
 renderXml_param :: Text -> ParamValue -> Element
@@ -228,7 +230,7 @@ instance Pretty FilterConfig where
     parens ("version=" <> viaShow filterVersion)
     <\> prettyParams filterParams
 
-parseXml_filterconfig :: Element -> Either String FilterConfig
+parseXml_filterconfig :: MonadError String m => Element -> m FilterConfig
 parseXml_filterconfig = withElement "filterconfig" $ \e-> do
   filterVersion <- attributeText "version" e
   filterParams  <- Map.fromList <$> traverse parseXml_param (childElements e)
@@ -278,7 +280,7 @@ saveResource mpath Resource{..} = do
   BS.writeFile path resourceData
   return path
 
-parseXml_resource :: Element -> Either String Resource
+parseXml_resource :: MonadError String m => Element -> m Resource
 parseXml_resource = withElement "resource" $ \e -> do
   resourceName <- attributeText "name"     e
   resourceType <- attributeText "type"     e
@@ -288,8 +290,8 @@ parseXml_resource = withElement "resource" $ \e -> do
 
   -- verify checksum
   if resourceCsum == MD5.hash resourceData
-    then Right Resource{..}
-    else Left $ "checksum mismatch for resource: " <> show resourceName
+    then pure Resource{..}
+    else throwError $ "checksum mismatch for resource: " <> show resourceName
 
 renderXml_resource :: Resource -> Element
 renderXml_resource Resource{..} =
@@ -305,7 +307,7 @@ renderXml_resource Resource{..} =
 
 -- | Parse a @<resources>@ XML element, which should contain a list of
 -- all embedded resources.
-parseXml_resources :: Element -> Either String (Map Text Resource)
+parseXml_resources :: MonadError String m => Element -> m (Map Text Resource)
 parseXml_resources = withElement "resources" $ \e -> do
   resources <- forM (childElements e) parseXml_resource
   return $ Map.fromList $ zip (resourceName <$> resources) resources
@@ -358,7 +360,7 @@ instance Pretty Preset where
 
 -- | Parse a @<Preset>@ XML element, which should be the root element
 -- of the preset settings document.
-parseXml_Preset :: BS.ByteString -> [ByteString] -> Element -> Either String Preset
+parseXml_Preset :: MonadError String m => BS.ByteString -> [ByteString] -> Element -> m Preset
 parseXml_Preset presetVersion presetIcon = withElement "Preset" $ \e -> do
   presetName    <- attributeText "name"      e
   presetPaintop <- attributeText "paintopid" e
@@ -373,11 +375,11 @@ parseXml_Preset presetVersion presetIcon = withElement "Preset" $ \e -> do
             filterConfig <- parseXml_filterconfig child
             if null filters
               then pure (params, Just filterConfig, resources)
-              else Left "found multiple <filterconfig> elements"
+              else throwError "found multiple <filterconfig> elements"
           "resources"    -> do
             resourceMap <- parseXml_resources child
             pure (params, filters, resourceMap <> resources)
-          name           -> Left $ "unrecognized element: " <> T.unpack (nameLocalName name)
+          name           -> throwError $ "unrecognized element: " <> T.unpack (nameLocalName name)
     ) (mempty, empty, mempty) (childElements e)
 
   -- If an expected resource count is provided we check it for
@@ -386,7 +388,7 @@ parseXml_Preset presetVersion presetIcon = withElement "Preset" $ \e -> do
     Just val -> do
       resourceCount <- decodeInt val
       unless (resourceCount == Map.size embeddedResources) $
-        Left "resource count mismatch"
+        throwError "resource count mismatch"
     Nothing -> pure ()
 
   return Preset{..}
@@ -513,11 +515,11 @@ getPresetIcon Preset{..} = runPut $ putMagicString *> traverse_ put (RegularChun
 -- The new icon is passed in the form of PNG data. In the case the PNG
 -- is a Krita preset, we strip out any existing preset metadata, since
 -- we will be inserting our own later.
-setPresetIcon :: ByteString -> Preset -> Either String Preset
+setPresetIcon :: MonadError String m => ByteString -> Preset -> m Preset
 setPresetIcon pngData preset =
   case runGetOrFail (getMagicString *> some getChunk) pngData of
-    Left  (_, _, err)    -> Left err
-    Right (_, _, chunks) -> Right $ preset { presetIcon = [c | RegularChunk c <- chunks] }
+    Left  (_, _, err)    -> throwError err
+    Right (_, _, chunks) -> pure preset { presetIcon = [c | RegularChunk c <- chunks] }
 
 -- | Get the dimensions of the preset icon image.
 presetIconDimensions :: Preset -> (Word32, Word32)

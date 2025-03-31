@@ -45,6 +45,7 @@ import           System.FilePath
 import           System.IO
 
 import qualified Paths_kpp_tool
+import           Kpp.Common
 import           Kpp.Preset
 
 -- | The kpp-tool version, exported from the Paths module

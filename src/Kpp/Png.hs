@@ -12,8 +12,6 @@ rendering PNG files.
 module Kpp.Png
   ( runGetOrFail'
   , runPut
-  , pngMagicString
-  , isPngData
   , getMagicString
   , putMagicString
   , getTextChunk
@@ -36,10 +34,11 @@ import           Control.Monad
 import           Data.Binary
 import           Data.Binary.Get
 import           Data.Binary.Put
-import qualified Data.ByteString        as BS
 import           Data.ByteString.Lazy   (ByteString)
 import qualified Data.ByteString.Lazy   as BL
 import           Data.Digest.CRC32
+
+import           Kpp.Common
 
 -- | Similar to `runGetOrFail` but uses MonadFail and doesn't include
 -- information about how much information was consumed.
@@ -62,18 +61,6 @@ expect expected = do
   actual <- getLazyByteString $ BL.length expected
   unless (actual == expected) $
     fail $ "expected " <> show expected
-
--- | All PNG image files begin with this signature.
-pngMagicString :: ByteString
-pngMagicString = "\x89\x50\x4E\x47\x0D\x0A\x1A\x0A"
-
--- | Check whether a `BS.ByteString` represents a PNG image.
---
--- This function doesn't attempt to fully parse or validate the input.
--- It simply checks whether the input begins with the standard PNG
--- magic string.
-isPngData :: BS.ByteString -> Bool
-isPngData bs = BS.toStrict pngMagicString `BS.isPrefixOf` bs
 
 -- | Consume a PNG magic string or fail when the input does not match.
 getMagicString :: Get ()
@@ -208,5 +195,5 @@ parseSettingsXml = runGetOrFail' $ do
   chunks <- some getChunk
   case [p | SettingChunk p <- chunks] of
     [s] -> return s
-    [] -> fail "missing settings chunk"
-    _  -> fail "too many settings chunks"
+    []  -> fail "missing settings chunk"
+    _   -> fail "too many settings chunks"

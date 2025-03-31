@@ -4,7 +4,6 @@
 module Kpp.PresetSpec (spec) where
 
 import           Data.Binary
-import qualified Data.ByteString      as BS
 import qualified Data.ByteString.Lazy as BL
 import qualified Data.Map.Strict      as Map
 import           Data.Maybe
@@ -12,28 +11,15 @@ import           System.FilePath
 import           Test.Hspec
 
 import           Common
+import           Kpp.Common
+import           Kpp.Filter
+import           Kpp.Param
+import           Kpp.Png
 import           Kpp.Preset
+import           Kpp.Resource
 
 spec :: Spec
 spec = describe "Preset" $ do
-  let binData = BS.pack [0x37, 0x5f, 0x00]
-  describe "encodeBase16" $ do
-    it "encodes base-16 data" $ do
-      encodeBase16 binData `shouldBe` "375f00"
-
-  describe "decodeBase16" $ do
-    it "decodes base-16 data" $ do
-      decodeBase16 "375f00" `shouldBe` Right binData
-      decodeBase16 "375F00" `shouldBe` Right binData
-
-  describe "encodeBase64" $ do
-    it "encodes base-64 data" $ do
-      encodeBase64 binData `shouldBe` "N18A"
-
-  describe "decodeBase64" $ do
-    it "decodes base-64 data" $ do
-      decodeBase64 "N18A" `shouldBe` Right binData
-
   describe "parseSettingsXml" $ do
     it "can extract XML settings" $ do
       bytes <- BL.readFile path_basicEllipse

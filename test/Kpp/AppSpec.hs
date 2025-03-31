@@ -15,7 +15,9 @@ import           Test.Hspec
 
 import           Common
 import           Kpp.App
+import           Kpp.Param
 import           Kpp.Preset
+import           Kpp.Resource
 
 spec_FromArgument :: Spec
 spec_FromArgument = describe "FromArgument" $ do

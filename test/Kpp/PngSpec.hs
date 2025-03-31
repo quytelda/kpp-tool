@@ -3,7 +3,6 @@
 
 module Kpp.PngSpec (spec) where
 
-import qualified Data.ByteString      as BS
 import qualified Data.ByteString.Lazy as BL
 import           Test.Hspec
 
@@ -12,15 +11,6 @@ import           Kpp.Png
 
 spec :: Spec
 spec = do
-  describe "isPngData" $ do
-    it "recognizes PNG data" $ do
-      png <- BS.readFile path_1px
-      png `shouldSatisfy` isPngData
-
-    it "recognized invalid PNG data" $ do
-      let binData = "\x89\x50\x4E\x47\x0D\x0E\x1A\x0A"
-      binData `shouldSatisfy` (not . isPngData)
-
   describe "getTextChunk" $ do
     it "parses tEXt chunks" $ do
       let bytes = "tEXtkey\x00value"

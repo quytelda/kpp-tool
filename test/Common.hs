@@ -18,7 +18,8 @@ import           Data.Int          (Int64)
 import qualified Data.Map.Strict   as Map
 import           System.Directory
 
-import           Kpp.Preset
+import           Kpp.Filter
+import           Kpp.Param
 
 pngIHDRChunkSize :: Int64
 pngIHDRChunkSize = 17

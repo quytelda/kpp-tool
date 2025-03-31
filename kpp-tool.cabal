@@ -85,6 +85,7 @@ test-suite kpp-tool-test
   other-modules:
       Common
       Kpp.AppSpec
+      Kpp.CommonSpec
       Kpp.PngSpec
       Kpp.PresetSpec
       Spec

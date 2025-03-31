@@ -27,6 +27,7 @@ library
   exposed-modules:
       Kpp.App
       Kpp.Common
+      Kpp.Param
       Kpp.Png
       Kpp.Preset
   other-modules:

@@ -12,9 +12,6 @@ rendering, and manipulating brush presets (KPP files).
 -}
 module Kpp.Preset
   ( parseSettingsXml
-  , ParamValue(..)
-  , prettyParam
-  , prettyParams
   , FilterConfig(..)
   , Resource(..)
   , resourceMD5
@@ -57,68 +54,12 @@ import           System.FilePath
 import           Text.XML
 
 import           Kpp.Common
+import           Kpp.Param
 import           Kpp.Png
 
 -------------------------------------------
 -- Preset (KPP file) Parsing & Rendering --
 -------------------------------------------
-
--- | `ParamValue` represents the value of a preset parameter.
---
--- Parameter values have an associated type which can be:
---
---   * "string" (for textual data)
---   * "internal" (no specific QVariant wrapper?)
---   * "bytearray" (for binary data encoded in base64)
---
--- However, sometimes the @type@ attribute is missing in older presets
--- or in some filter settings. For these cases, the type is unknown.
-data ParamValue = Unknown  !Text
-                | String   !Text
-                | Internal !Text
-                | Binary   !BS.ByteString
-                deriving (Eq, Show)
-
-instance Pretty ParamValue where
-  pretty (String   val) = dquotes  (pretty val)
-  pretty (Internal val) = squotes  (pretty val)
-  pretty (Binary   val) = brackets (prettyByteData val)
-  pretty (Unknown  val) = braces   (pretty val)
-
--- | Pretty printer for parameters.
---
--- Displays a simple "key: value" representation.
-prettyParam :: Text -> ParamValue -> Doc ann
-prettyParam key val = pretty key <> ":" <+> pretty val
-
-parseXml_param :: MonadError String m => Element -> m (Text, ParamValue)
-parseXml_param = withElement "param" $ \e@Element{..} -> do
-  paramName <- attributeText "name" e
-  paramData <- contentText e
-
-  paramValue <- case Map.lookup "type" elementAttributes of
-    Nothing          -> Unknown  <$> pure         paramData
-    Just "string"    -> String   <$> pure         paramData
-    Just "internal"  -> Internal <$> pure         paramData
-    Just "bytearray" -> Binary   <$> decodeBase64 paramData
-    Just paramType   -> throwError $ "unrecognized param type: " <> show paramType
-  return (paramName, paramValue)
-
-renderXml_param :: Text -> ParamValue -> Element
-renderXml_param key val =
-  let (paramType, paramData) = case val of
-        Unknown  v -> (Nothing,          v)
-        String   v -> (Just "string",    v)
-        Internal v -> (Just "internal",  v)
-        Binary   v -> (Just "bytearray", encodeBase64 v)
-      elementName       = "param"
-      elementNodes      = [NodeContent paramData]
-      elementAttributes = Map.fromList $ [("name", key)]
-                          <> maybe empty (\t -> [("type", t)]) paramType
-  in Element{..}
-
-renderXml_params :: Map Text ParamValue -> [Element]
-renderXml_params = Map.elems . Map.mapWithKey renderXml_param
 
 -- | `FilterConfig` represents the serialized settings for a filter.
 --
@@ -237,10 +178,6 @@ data Preset = Preset
   , embeddedResources :: !(Map Text Resource)
   , presetIcon        :: ![ByteString]
   } deriving (Eq, Show)
-
--- | Format a table of parameter names and values.
-prettyParams :: Map Text ParamValue -> Doc ann
-prettyParams = concatWith (<\>) . Map.mapWithKey prettyParam
 
 -- | Format an optional table of filter settings.
 prettyFilter :: Maybe FilterConfig -> Doc ann

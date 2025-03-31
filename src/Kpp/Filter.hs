@@ -7,8 +7,8 @@ Module      : Kpp.Filter
 Copyright   : (c) Quytelda Kahja, 2024
 License     : BSD-3-Clause
 
-This module contains functions and data structures for parsing,
-rendering, and manipulating brush presets (KPP files).
+This module contains functions and data structures for preset filter
+configurations.
 -}
 module Kpp.Filter
   ( FilterConfig(..)

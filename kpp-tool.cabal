@@ -31,6 +31,7 @@ library
       Kpp.Param
       Kpp.Png
       Kpp.Preset
+      Kpp.Resource
   other-modules:
       Paths_kpp_tool
   autogen-modules:

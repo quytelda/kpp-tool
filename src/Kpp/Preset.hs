@@ -54,43 +54,13 @@ import           System.FilePath
 import           Text.XML
 
 import           Kpp.Common
+import           Kpp.Filter
 import           Kpp.Param
 import           Kpp.Png
 
 -------------------------------------------
 -- Preset (KPP file) Parsing & Rendering --
 -------------------------------------------
-
--- | `FilterConfig` represents the serialized settings for a filter.
---
--- @<filterconfig>@ elements appears in filter preset settings and
--- contain a list of parameters. Acceptable versions seem to be "1"
--- and "2" as of Dec. 2024.
---
--- Note: Some parameters might be missing the type attribute.
-data FilterConfig = FilterConfig
-  { filterVersion :: !Text
-  , filterParams  :: !(Map Text ParamValue)
-  } deriving (Eq, Show)
-
-instance Pretty FilterConfig where
-  pretty FilterConfig{..} =
-    parens ("version=" <> viaShow filterVersion)
-    <\> prettyParams filterParams
-
-parseXml_filterconfig :: MonadError String m => Element -> m FilterConfig
-parseXml_filterconfig = withElement "filterconfig" $ \e-> do
-  filterVersion <- attributeText "version" e
-  filterParams  <- Map.fromList <$> traverse parseXml_param (childElements e)
-  return FilterConfig{..}
-
-renderXml_filterconfig :: FilterConfig -> Element
-renderXml_filterconfig FilterConfig{..} =
-  let elementName       = "filterconfig"
-      elementNodes      = NodeElement <$> renderXml_params filterParams
-      elementAttributes = Map.fromList [ ("version", filterVersion) ]
-  in Element{..}
-
 
 -- | 'Resource' is a type for embedded resources.
 data Resource = Resource { resourceName :: !Text
@@ -178,11 +148,6 @@ data Preset = Preset
   , embeddedResources :: !(Map Text Resource)
   , presetIcon        :: ![ByteString]
   } deriving (Eq, Show)
-
--- | Format an optional table of filter settings.
-prettyFilter :: Maybe FilterConfig -> Doc ann
-prettyFilter Nothing             = "None"
-prettyFilter (Just filterConfig) = pretty filterConfig
 
 -- | Format a table of embedded resource entries.
 prettyResources :: Map Text Resource -> Doc ann

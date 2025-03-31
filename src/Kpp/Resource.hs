@@ -7,8 +7,9 @@ Module      : Kpp.Resource
 Copyright   : (c) Quytelda Kahja, 2024
 License     : BSD-3-Clause
 
-This module contains functions and data structures for parsing,
-rendering, and manipulating brush presets (KPP files).
+This module contains functions and data types for describing embedded
+resources. An embedded resource is a Krita resource (e.g. brush tip,
+pattern) which is embedded inside the XML of a preset file.
 -}
 module Kpp.Resource
   ( Resource(..)

@@ -3,6 +3,7 @@
 
 module Common
   ( pngIHDRChunkSize
+  , parseXmlElement
   , testDir
   , withTestDir
   , path_basicEllipse
@@ -14,15 +15,20 @@ module Common
   ) where
 
 import           Control.Exception
-import           Data.Int          (Int64)
-import qualified Data.Map.Strict   as Map
+import qualified Data.ByteString.Lazy as BL
+import           Data.Int             (Int64)
+import qualified Data.Map.Strict      as Map
 import           System.Directory
+import           Text.XML
 
 import           Kpp.Filter
 import           Kpp.Param
 
 pngIHDRChunkSize :: Int64
 pngIHDRChunkSize = 17
+
+parseXmlElement :: BL.ByteString -> Element
+parseXmlElement = documentRoot . parseLBS_ def
 
 -- | This is the directory where temporary test files will be created
 -- during unit tests. It is automatically created when tests are run,

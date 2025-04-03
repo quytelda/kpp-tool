@@ -18,9 +18,6 @@ import           Kpp.Common
 exampleXml :: BL.ByteString
 exampleXml = "<example key=\"value\">content</example>"
 
-parseXml :: BL.ByteString -> Document
-parseXml = parseLBS_ def
-
 spec :: Spec
 spec = do
   let binData = BS.pack [0x37, 0x5f, 0x00]
@@ -77,7 +74,7 @@ spec = do
       result `shouldBe` "PNG Image (546 bytes)"
 
   describe "attributeText" $ do
-    let root = documentRoot $ parseXml exampleXml
+    let root = parseXmlElement exampleXml
 
     it "returns an XML attribute's value" $ do
       attributeText "key" root `shouldBe` Right "value"
@@ -87,11 +84,11 @@ spec = do
 
   describe "contentText" $ do
     it "returns the content of an XML element" $ do
-      let root = documentRoot $ parseXml exampleXml
+      let root = parseXmlElement exampleXml
       contentText root `shouldBe` Just "content"
 
     it "returns empty string when content is missing" $ do
-      let root = documentRoot $ parseXml "<example key=\"value\" />"
+      let root = parseXmlElement "<example key=\"value\" />"
       contentText root `shouldBe` Just ""
 
   describe "isPngData" $ do

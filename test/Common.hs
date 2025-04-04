@@ -12,6 +12,7 @@ module Common
   , path_scribble
   , path_1px
   , levelsFilterConfig
+  , elementToLBS'
   ) where
 
 import           Control.Exception
@@ -29,6 +30,14 @@ pngIHDRChunkSize = 17
 
 parseXmlElement :: BL.ByteString -> Element
 parseXmlElement = documentRoot . parseLBS_ def
+
+-- | Modified XML renderer is generates simpler output for tests.
+elementToLBS' :: Element -> BL.ByteString
+elementToLBS' documentRoot =
+  let documentPrologue = Prologue [] Nothing []
+      documentEpilogue = []
+      renderSettings   = def { rsXMLDeclaration = False }
+  in renderLBS renderSettings Document{..}
 
 -- | This is the directory where temporary test files will be created
 -- during unit tests. It is automatically created when tests are run,

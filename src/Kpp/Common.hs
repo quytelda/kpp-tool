@@ -19,6 +19,8 @@ module Kpp.Common
   , (<\>)
   , (<\\>)
   , prettyByteData
+  , elementToLBS
+  , elementFromLBS
   , attributeText
   , contentText
   , childElements
@@ -29,6 +31,7 @@ module Kpp.Common
 
 -- import           Control.Applicative
 -- import           Control.Monad
+import           Control.Exception
 import           Control.Monad.Except
 import qualified Crypto.Hash.MD5        as MD5
 import qualified Data.ByteString        as BS
@@ -116,6 +119,19 @@ prettyByteData bytes
 ---------
 -- XML --
 ---------
+
+elementToLBS :: Element -> BL.ByteString
+elementToLBS documentRoot =
+  let documentPrologue = Prologue [] Nothing []
+      documentEpilogue = []
+      renderSettings   = def { rsUseCDATA = const True }
+  in renderLBS renderSettings Document{..}
+
+elementFromLBS :: MonadError String m => BL.ByteString -> m Element
+elementFromLBS xml =
+  case parseLBS def xml of
+    Right doc -> pure $ documentRoot doc
+    Left  err -> throwError $ displayException err
 
 attributeText :: MonadError String m => Name -> Element -> m T.Text
 attributeText name Element{..} =

@@ -147,10 +147,8 @@ getPreset = do
   let version = BS.toStrict (head versionChunks)
       xml     = head settingChunks
 
-  either fail pure
-    $ parseXml_Preset version regularChunks
-    $ documentRoot
-    $ parseLBS_ def xml
+  either fail pure $
+    elementFromLBS xml >>= parseXml_Preset version regularChunks
 
 putPreset :: Preset -> Put
 putPreset preset@Preset{..} = do
@@ -160,7 +158,7 @@ putPreset preset@Preset{..} = do
   let isFollower bs = BL.isPrefixOf "IDAT" bs || BL.isPrefixOf "IEND" bs
       (pre, post) = break isFollower presetIcon
       versionChunk = VersionChunk $ BS.fromStrict presetVersion
-      settingChunk = SettingChunk $ makeSettingXml preset
+      settingChunk = SettingChunk $ elementToLBS $ renderXml_Preset preset
 
   putMagicString
   traverse_ put (RegularChunk <$> pre)
@@ -242,11 +240,3 @@ setPresetIcon pngData preset =
 -- | Get the dimensions of the preset icon image.
 presetIconDimensions :: Preset -> (Word32, Word32)
 presetIconDimensions Preset{..} = runGet getIhdrDimensions $ head presetIcon
-
-makeSettingXml :: Preset -> BL.ByteString
-makeSettingXml preset =
-  let documentPrologue = Prologue [] Nothing []
-      documentEpilogue = []
-      documentRoot     = renderXml_Preset preset
-      renderSettings   = def { rsUseCDATA = const True }
-  in renderLBS renderSettings Document{..}

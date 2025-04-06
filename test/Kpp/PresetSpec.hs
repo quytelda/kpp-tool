@@ -12,7 +12,6 @@ import           Test.Hspec
 
 import           Common
 import           Kpp.Common
-import           Kpp.Filter
 import           Kpp.Param
 import           Kpp.Png
 import           Kpp.Preset

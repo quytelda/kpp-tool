@@ -3,16 +3,12 @@
 
 module Kpp.FilterSpec (spec) where
 
-import qualified Data.ByteString      as BS
 import qualified Data.ByteString.Lazy as BL
 import           Data.Either
 import qualified Data.Map.Strict      as Map
-import qualified Data.Text            as T
 import           Test.Hspec
-import           Text.XML
 
 import           Common
-import           Kpp.Common
 import           Kpp.Filter
 import           Kpp.Param
 

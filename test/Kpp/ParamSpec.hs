@@ -58,4 +58,3 @@ spec = do
 
     it "renders parameters with unknown type" $ do
       testRender "ParamName" (Unknown "ParamValue")
-

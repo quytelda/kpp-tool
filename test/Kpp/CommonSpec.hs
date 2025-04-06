@@ -10,7 +10,6 @@ import qualified Data.Text                 as T
 import           Prettyprinter
 import           Prettyprinter.Render.Text
 import           Test.Hspec
-import           Text.XML
 
 import           Common
 import           Kpp.Common

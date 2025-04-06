@@ -90,6 +90,7 @@ test-suite kpp-tool-test
       Kpp.ParamSpec
       Kpp.PngSpec
       Kpp.PresetSpec
+      Kpp.ResourceSpec
       Spec
       Paths_kpp_tool
   autogen-modules:

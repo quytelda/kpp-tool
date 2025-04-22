@@ -49,8 +49,9 @@ runGetOrFail' g input = case runGetOrFail g input of
 
 getNull :: Get ()
 getNull = do
-  b <- getWord8
-  guard $ b == 0
+  w <- getWord8
+  unless (w == 0) $
+    fail $ "expected 0, found " <> show w
 
 putNull :: Put
 putNull = putWord8 0

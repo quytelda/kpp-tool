@@ -12,6 +12,7 @@ rendering PNG files.
 module Kpp.Png
   ( runGetOrFail'
   , runPut
+  , getNull
   , getMagicString
   , putMagicString
   , getTextChunk
@@ -61,7 +62,7 @@ expect :: ByteString -> Get ()
 expect expected = do
   actual <- getLazyByteString $ BL.length expected
   unless (actual == expected) $
-    fail $ "expected " <> show expected
+    fail $ "expected " <> show expected <> ", got " <> show actual
 
 -- | Consume a PNG magic string or fail when the input does not match.
 getMagicString :: Get ()

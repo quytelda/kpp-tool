@@ -25,30 +25,33 @@ module Kpp.Preset
   , getPresetIcon
   , setPresetIcon
   , presetIconDimensions
+  , parseXml_Preset
   ) where
 
+import           Conduit
 import           Control.Applicative
 import           Control.Monad
 import           Control.Monad.Except
 import           Data.Binary
 import           Data.Binary.Get
 import           Data.Binary.Put
-import qualified Data.ByteString        as BS
-import           Data.ByteString.Lazy   (ByteString)
-import qualified Data.ByteString.Lazy   as BL
+import qualified Data.ByteString      as BS
+import           Data.ByteString.Lazy (ByteString)
+import qualified Data.ByteString.Lazy as BL
 import           Data.Foldable
-import           Data.Map.Strict        (Map)
-import qualified Data.Map.Strict        as Map
+import           Data.Map.Strict      (Map)
+import qualified Data.Map.Strict      as Map
 import           Data.Maybe
-import           Data.Text              (Text)
-import qualified Data.Text              as T
-import           Prettyprinter          hiding (width)
+import           Data.Text            (Text)
+import qualified Data.Text            as T
+import           Prettyprinter        hiding (width)
 import           Text.XML
 
 import           Kpp.Common
 import           Kpp.Filter
 import           Kpp.Param
 import           Kpp.Png
+import           Kpp.PngConduit
 import           Kpp.Resource
 
 -- | A `Preset` represents a Krita brush preset, including its
@@ -60,7 +63,7 @@ data Preset = Preset
   , presetParams      :: !(Map Text ParamValue)
   , presetFilter      :: !(Maybe FilterConfig)
   , embeddedResources :: !(Map Text Resource)
-  , presetIcon        :: ![ByteString]
+  , presetIcon        :: !BL.ByteString
   } deriving (Eq, Show)
 
 instance Pretty Preset where
@@ -78,7 +81,7 @@ instance Pretty Preset where
 
 -- | Parse a @<Preset>@ XML element, which should be the root element
 -- of the preset settings document.
-parseXml_Preset :: MonadError String m => BS.ByteString -> [ByteString] -> Element -> m Preset
+parseXml_Preset :: MonadError String m => BS.ByteString -> BL.ByteString -> Element -> m Preset
 parseXml_Preset presetVersion presetIcon = withElement "Preset" $ \e -> do
   presetName    <- attributeText "name"      e
   presetPaintop <- attributeText "paintopid" e
@@ -148,15 +151,19 @@ getPreset = do
       xml     = head settingChunks
 
   either fail pure $
-    elementFromLBS xml >>= parseXml_Preset version regularChunks
+    elementFromLBS xml >>= parseXml_Preset version (unchunk regularChunks)
 
 putPreset :: Preset -> Put
 putPreset preset@Preset{..} = do
+  -- TODO: fix this
+  let chunks = case tochunks presetIcon of
+                 Right cs -> cs
+                 Left _   -> error "This shouldn't happen."
   -- The metadata chunks must be inserted after the IHDR chunk.
   -- Krita inserts the elements following the IHDR and pHYs chunks,
   -- but before the IDAT chunks, so this code matches that behavior.
   let isFollower bs = BL.isPrefixOf "IDAT" bs || BL.isPrefixOf "IEND" bs
-      (pre, post) = break isFollower presetIcon
+      (pre, post) = break isFollower chunks
       versionChunk = VersionChunk $ BS.fromStrict presetVersion
       settingChunk = SettingChunk $ elementToLBS $ renderXml_Preset preset
 
@@ -223,20 +230,24 @@ setPresetName name preset = preset { presetName = name }
 --
 -- This icon will not contain any of the preset metadata and is just a
 -- regular PNG file.
-getPresetIcon :: Preset -> ByteString
-getPresetIcon Preset{..} = runPut $ putMagicString *> traverse_ put (RegularChunk <$> presetIcon)
+getPresetIcon :: Preset -> BL.ByteString
+getPresetIcon Preset{..} = presetIcon
 
 -- | Change a preset's icon image.
 --
 -- The new icon is passed in the form of PNG data. In the case the PNG
 -- is a Krita preset, we strip out any existing preset metadata, since
 -- we will be inserting our own later.
-setPresetIcon :: MonadError String m => ByteString -> Preset -> m Preset
-setPresetIcon pngData preset =
-  case runGetOrFail (getMagicString *> some getChunk) pngData of
-    Left  (_, _, err)    -> throwError err
-    Right (_, _, chunks) -> pure preset { presetIcon = [c | RegularChunk c <- chunks] }
+setPresetIcon :: MonadThrow m => ByteString -> Preset -> m Preset
+setPresetIcon pngData preset = do
+  png <- runConduit $
+    sourceLazy pngData
+    .| pngToChunks
+    .| filterC isRegularChunk
+    .| chunksToPng
+    .| sinkLazy
+  pure $ preset { presetIcon = png }
 
 -- | Get the dimensions of the preset icon image.
 presetIconDimensions :: Preset -> (Word32, Word32)
-presetIconDimensions Preset{..} = runGet getIhdrDimensions $ head presetIcon
+presetIconDimensions Preset{..} = runGet (getMagicString *> getIhdrDimensions) presetIcon

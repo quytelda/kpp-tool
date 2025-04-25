@@ -69,17 +69,27 @@ pngToChunks = do
 
   conduitGet getPngChunk
 
-chunksToPng :: MonadThrow m => ConduitT ByteString ByteString m ()
+chunksToPng :: Monad m => ConduitT ByteString ByteString m ()
 chunksToPng = do
   yield (BS.toStrict pngMagic)
   C.map putPngChunk
     .| conduitPut
+
+unchunk :: [BL.ByteString] -> BL.ByteString
+unchunk cs = runConduitPure $ yieldMany cs .| C.map BS.toStrict .| chunksToPng .| sinkLazy
+
+tochunks :: MonadThrow m => BL.ByteString -> m [BL.ByteString]
+tochunks png = runConduit $ sourceLazy png .| pngToChunks .| C.map BS.fromStrict .| sinkList
 
 isKeywordChunk :: ByteString -> ByteString -> Bool
 isKeywordChunk key bs =
   t `elem` ["tEXt", "zTXt", "iTXt"]
   && (BS.append key "\0") `BS.isPrefixOf` bs'
   where (t, bs') = BS.splitAt 4 bs
+
+isRegularChunk :: ByteString -> Bool
+isRegularChunk bs = not $
+  isKeywordChunk "version" bs || isKeywordChunk "preset" bs
 
 sinkExactlyOne :: MonadThrow m => ConduitT a Void m a
 sinkExactlyOne = do
@@ -118,9 +128,6 @@ handleRegularChunks =
   C.filter isRegularChunk
   .| chunksToPng
   .| sinkLazy
-  where
-    isRegularChunk bs = not $
-      isKeywordChunk "version" bs || isKeywordChunk "preset" bs
 
 parseChunks :: MonadThrow m => ConduitT ByteString Void m (ByteString, Document, BL.ByteString)
 parseChunks = getZipSink $

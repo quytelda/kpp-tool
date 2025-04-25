@@ -30,6 +30,7 @@ library
       Kpp.Filter
       Kpp.Param
       Kpp.Png
+      Kpp.PngConduit
       Kpp.Preset
       Kpp.Resource
   other-modules:

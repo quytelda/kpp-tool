@@ -10,48 +10,50 @@ License     : BSD-3-Clause
 This module contains functions and data structures for parsing,
 rendering, and manipulating brush presets (KPP files).
 -}
-module Kpp.Preset
-  ( parseSettingsXml
-  , Preset(..)
-  , loadPreset
-  , savePreset
-  , setPresetName
-  , lookupParam
-  , insertParam
-  , lookupResourceByName
-  , lookupResourceByFile
-  , lookupResourceByMD5
-  , insertResource
-  , getPresetIcon
-  , setPresetIcon
-  , presetIconDimensions
-  , parseXml_Preset
-  ) where
+module Kpp.Preset where
+
+-- module Kpp.Preset
+--   ( parseSettingsXml
+--   , Preset(..)
+--   , loadPreset
+--   , savePreset
+--   , setPresetName
+--   , lookupParam
+--   , insertParam
+--   , lookupResourceByName
+--   , lookupResourceByFile
+--   , lookupResourceByMD5
+--   , insertResource
+--   , getPresetIcon
+--   , setPresetIcon
+--   , presetIconDimensions
+--   ) where
 
 import           Conduit
 import           Control.Applicative
 import           Control.Monad
-import           Control.Monad.Except
 import           Data.Binary
 import           Data.Binary.Get
 import           Data.Binary.Put
-import qualified Data.ByteString      as BS
-import           Data.ByteString.Lazy (ByteString)
-import qualified Data.ByteString.Lazy as BL
+import           Data.ByteString                   (ByteString)
+import qualified Data.ByteString                   as BS
+import qualified Data.ByteString.Base64            as Base64
+import qualified Data.ByteString.Lazy              as BL
+import qualified Data.Conduit.Combinators          as C
+import           Data.Conduit.Serialization.Binary
 import           Data.Foldable
-import           Data.Map.Strict      (Map)
-import qualified Data.Map.Strict      as Map
+import           Data.Map.Strict                   (Map)
+import qualified Data.Map.Strict                   as Map
 import           Data.Maybe
-import           Data.Text            (Text)
-import qualified Data.Text            as T
-import           Prettyprinter        hiding (width)
+import           Data.Text                         (Text)
+import qualified Data.Text                         as T
+import           Prettyprinter                     hiding (width)
 import           Text.XML
 
 import           Kpp.Common
 import           Kpp.Filter
 import           Kpp.Param
 import           Kpp.Png
-import           Kpp.PngConduit
 import           Kpp.Resource
 
 -- | A `Preset` represents a Krita brush preset, including its
@@ -71,17 +73,20 @@ instance Pretty Preset where
     vsep [ "name:"    <+> pretty  presetName
          , "version:" <+> viaShow presetVersion
          , "paintop:" <+> pretty  presetPaintop
-         , "icon:"    <+> pretty width <> "x" <> pretty height
+         , "icon:"    <+> prettyIconDimensions
          ]
     <\\> nest 2 ("Parameters:"          <\> prettyParams    presetParams)
     <\\> nest 2 ("Filter Settings:"     <\> prettyFilter    presetFilter)
     <\\> nest 2 ("Embedded Resources:"  <\> prettyResources embeddedResources)
     where
-      (width, height) = presetIconDimensions preset
+      prettyIconDimensions =
+        case presetIconDimensions preset of
+          Just (width, height) -> pretty width <> "x" <> pretty height
+          Nothing              -> "invalid PNG data"
 
 -- | Parse a @<Preset>@ XML element, which should be the root element
 -- of the preset settings document.
-parseXml_Preset :: MonadError String m => BS.ByteString -> BL.ByteString -> Element -> m Preset
+parseXml_Preset :: MonadThrow m => BS.ByteString -> BL.ByteString -> Element -> m Preset
 parseXml_Preset presetVersion presetIcon = withElement "Preset" $ \e -> do
   presetName    <- attributeText "name"      e
   presetPaintop <- attributeText "paintopid" e
@@ -96,11 +101,12 @@ parseXml_Preset presetVersion presetIcon = withElement "Preset" $ \e -> do
             filterConfig <- parseXml_filterconfig child
             if null filters
               then pure (params, Just filterConfig, resources)
-              else throwError "found multiple <filterconfig> elements"
+              else throwM $ ParseException "found multiple <filterconfig> elements"
           "resources"    -> do
             resourceMap <- parseXml_resources child
             pure (params, filters, resourceMap <> resources)
-          name           -> throwError $ "unrecognized element: " <> T.unpack (nameLocalName name)
+          name           -> throwM $ ParseException $
+            "unrecognized element: " <> T.unpack (nameLocalName name)
     ) (mempty, empty, mempty) (childElements e)
 
   -- If an expected resource count is provided we check it for
@@ -109,7 +115,7 @@ parseXml_Preset presetVersion presetIcon = withElement "Preset" $ \e -> do
     Just val -> do
       resourceCount <- decodeInt val
       unless (resourceCount == Map.size embeddedResources) $
-        throwError "resource count mismatch"
+        throwM $ ParseException $ "resource count mismatch"
     Nothing -> pure ()
 
   return Preset{..}
@@ -129,65 +135,54 @@ renderXml_Preset Preset{..} =
                                        ]
   in Element{..}
 
-getPreset :: Get Preset
-getPreset = do
-  getMagicString
+--------------------------------------------------------------------------------
+-- Conduits
 
-  chunks <- some getChunk
-  let versionChunks = [v | VersionChunk v <- chunks]
-      settingChunks = [p | SettingChunk p <- chunks]
-      regularChunks = [r | RegularChunk r <- chunks]
+sinkPreset :: MonadThrow m => ConduitT ByteString Void m Preset
+sinkPreset = do
+  (version, doc, icon) <- getZipSink $ (,,)
+    <$> ZipSink parseVersionChunks
+    <*> ZipSink parseSettingChunks
+    <*> ZipSink parseRegularChunks
 
-  when (null versionChunks) $
-    fail "missing preset version chunk"
+  parseXml_Preset version icon (documentRoot doc)
+  >>= doubleDecodePatterns
 
-  when (null settingChunks) $
-    fail "missing preset settings chunks"
+-- putPreset :: Preset -> Put
+-- putPreset preset@Preset{..} = do
+--   -- The metadata chunks must be inserted after the IHDR chunk.
+--   -- Krita inserts the elements following the IHDR and pHYs chunks,
+--   -- but before the IDAT chunks, so this code matches that behavior.
+--   let isFollower bs = BL.isPrefixOf "IDAT" bs || BL.isPrefixOf "IEND" bs
+--       (pre, post) = break isFollower presetIcon
+--       versionChunk = VersionChunk $ BS.fromStrict presetVersion
+--       settingChunk = SettingChunk
+--                      $ elementToLBS
+--                      $ renderXml_Preset
+--                      $ doubleEncodePatterns preset
 
-  when (length versionChunks > 1 || length settingChunks > 1) $
-    fail "duplicated metadata chunks"
+--   putMagicString
+--   traverse_ put (RegularChunk <$> pre)
+--   put settingChunk
+--   put versionChunk
+--   traverse_ put (RegularChunk <$> post)
 
-  let version = BS.toStrict (head versionChunks)
-      xml     = head settingChunks
-
-  either fail pure $
-    elementFromLBS xml >>= parseXml_Preset version (unchunk regularChunks)
-
-putPreset :: Preset -> Put
-putPreset preset@Preset{..} = do
-  -- TODO: fix this
-  let chunks = case tochunks presetIcon of
-                 Right cs -> cs
-                 Left _   -> error "This shouldn't happen."
-  -- The metadata chunks must be inserted after the IHDR chunk.
-  -- Krita inserts the elements following the IHDR and pHYs chunks,
-  -- but before the IDAT chunks, so this code matches that behavior.
-  let isFollower bs = BL.isPrefixOf "IDAT" bs || BL.isPrefixOf "IEND" bs
-      (pre, post) = break isFollower chunks
-      versionChunk = VersionChunk $ BS.fromStrict presetVersion
-      settingChunk = SettingChunk $ elementToLBS $ renderXml_Preset preset
-
-  putMagicString
-  traverse_ put (RegularChunk <$> pre)
-  put settingChunk
-  put versionChunk
-  traverse_ put (RegularChunk <$> post)
-
-instance Binary Preset where
-  get = getPreset
-  put = putPreset
+-- instance Binary Preset where
+--   get = getPreset
+--   put = putPreset
 
 -- | Read and parse a KPP file.
 loadPreset :: FilePath -> IO Preset
-loadPreset path = do
-  contents <- BL.readFile path
-  return $ decode contents
+loadPreset path = runConduitRes $
+  sourceFile path
+  .| pngToChunks
+  .| sinkPreset
 
--- | Render and write a KPP file.
-savePreset :: FilePath -> Preset -> IO ()
-savePreset path preset =
-  let contents = encode preset
-  in BL.writeFile path contents
+-- -- | Render and write a KPP file.
+-- savePreset :: FilePath -> Preset -> IO ()
+-- savePreset path preset =
+--   let contents = encode preset
+--   in BL.writeFile path contents
 
 -- | Look up the value of a preset parameter.
 lookupParam :: Text -> Preset -> Maybe ParamValue
@@ -226,28 +221,73 @@ insertResource resource@Resource{..}  preset@Preset{..} =
 setPresetName :: Text -> Preset -> Preset
 setPresetName name preset = preset { presetName = name }
 
--- | Get a preset's icon image as PNG data.
---
--- This icon will not contain any of the preset metadata and is just a
--- regular PNG file.
-getPresetIcon :: Preset -> BL.ByteString
-getPresetIcon Preset{..} = presetIcon
+-- -- | Get a preset's icon image as PNG data.
+-- --
+-- -- This icon will not contain any of the preset metadata and is just a
+-- -- regular PNG file.
+-- getPresetIcon :: Preset -> ByteString
+-- getPresetIcon Preset{..} = runPut $ putMagicString *> traverse_ put (RegularChunk <$> presetIcon)
 
--- | Change a preset's icon image.
---
--- The new icon is passed in the form of PNG data. In the case the PNG
--- is a Krita preset, we strip out any existing preset metadata, since
--- we will be inserting our own later.
-setPresetIcon :: MonadThrow m => ByteString -> Preset -> m Preset
-setPresetIcon pngData preset = do
-  png <- runConduit $
-    sourceLazy pngData
-    .| pngToChunks
-    .| filterC isRegularChunk
-    .| chunksToPng
-    .| sinkLazy
-  pure $ preset { presetIcon = png }
+-- -- | Change a preset's icon image.
+-- --
+-- -- The new icon is passed in the form of PNG data. In the case the PNG
+-- -- is a Krita preset, we strip out any existing preset metadata, since
+-- -- we will be inserting our own later.
+-- setPresetIcon :: MonadError String m => ByteString -> Preset -> m Preset
+-- setPresetIcon pngData preset =
+--   case runGetOrFail (getMagicString *> some getChunk) pngData of
+--     Left  (_, _, err)    -> throwError err
+--     Right (_, _, chunks) -> pure preset { presetIcon = [c | RegularChunk c <- chunks] }
 
 -- | Get the dimensions of the preset icon image.
-presetIconDimensions :: Preset -> (Word32, Word32)
-presetIconDimensions Preset{..} = runGet (getMagicString *> getIhdrDimensions) presetIcon
+presetIconDimensions :: MonadThrow m => Preset -> m (Word32, Word32)
+presetIconDimensions Preset{..} = runConduit $
+  sourceLazy presetIcon .| pngToChunks .| C.take 1 .| sinkGet getIhdrDimensions
+
+--------------------------------------------------------------------------------
+-- Fixes
+
+-- For presets with version 2.2, any embedded pattern is saved in the
+-- "Texture/Pattern/Pattern" parameter as a binary value. In this
+-- case, there will also be a matching "Texture/Pattern/PatternMD5"
+-- parameter which contains an MD5 checksum. However, both these
+-- values will be base64-encoded twice.
+--
+-- To get the actual data, we must decode these values a second time.
+-- Similarly when we saving the preset, we have to encode the data
+-- twice before inserting it into the settings document.
+--
+-- TODO: Does Krita actually require the values to be double-encoded
+-- to load them correctly? If not, we could just output single-encoded
+-- values. Maybe test this against old and new Krita versions.
+--
+-- TODO: Create some presets using pre-5.0 Krita versions for testing.
+
+keyPattern :: T.Text
+keyPattern    = "Texture/Pattern/Pattern"
+
+keyPatternMD5 :: T.Text
+keyPatternMD5 = "Texture/Pattern/PatternMD5"
+
+doubleDecodePatterns :: MonadThrow m => Preset -> m Preset
+doubleDecodePatterns preset@Preset{..}
+  | presetVersion == "5.0" = pure preset
+  | otherwise = do
+      params <- mapAdjustM decodeParam keyPattern >=>
+                mapAdjustM decodeParam keyPatternMD5 $ presetParams
+      return preset { presetParams = params }
+  where
+    decodeParam (Binary bs) = Binary <$> (eitherThrow . Base64.decode) bs
+    decodeParam x           = pure x
+    mapAdjustM f = Map.alterF (traverse f)
+
+doubleEncodePatterns :: Preset -> Preset
+doubleEncodePatterns preset@Preset{..}
+  | presetVersion == "5.0" = preset
+  | otherwise =
+      let params = Map.adjust encodeParam keyPattern .
+                   Map.adjust encodeParam keyPatternMD5 $ presetParams
+      in preset { presetParams = params }
+  where
+    encodeParam (Binary bs) = Binary $ Base64.encode bs
+    encodeParam x           = x

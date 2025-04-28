@@ -10,12 +10,13 @@ License     : BSD-3-Clause
 This module contains functions and data structures for preset filter
 configurations.
 -}
-module Kpp.Filter
-  ( FilterConfig(..)
-  , prettyFilter
-  , parseXml_filterconfig
-  , renderXml_filterconfig
-  ) where
+module Kpp.Filter where
+-- module Kpp.Filter
+--   ( FilterConfig(..)
+--   , prettyFilter
+--   , parseXml_filterconfig
+--   , renderXml_filterconfig
+--   ) where
 
 import           Control.Monad.Except
 import           Data.Map.Strict        (Map)
@@ -49,15 +50,15 @@ prettyFilter :: Maybe FilterConfig -> Doc ann
 prettyFilter Nothing             = "None"
 prettyFilter (Just filterConfig) = pretty filterConfig
 
-parseXml_filterconfig :: MonadError String m => Element -> m FilterConfig
-parseXml_filterconfig = withElement "filterconfig" $ \e-> do
-  filterVersion <- attributeText "version" e
-  filterParams  <- Map.fromList <$> traverse parseXml_param (childElements e)
-  return FilterConfig{..}
+-- parseXml_filterconfig :: MonadError String m => Element -> m FilterConfig
+-- parseXml_filterconfig = withElement "filterconfig" $ \e-> do
+--   filterVersion <- attributeText "version" e
+--   filterParams  <- Map.fromList <$> traverse parseXml_param (childElements e)
+--   return FilterConfig{..}
 
-renderXml_filterconfig :: FilterConfig -> Element
-renderXml_filterconfig FilterConfig{..} =
-  let elementName       = "filterconfig"
-      elementNodes      = NodeElement <$> renderXml_params filterParams
-      elementAttributes = Map.fromList [ ("version", filterVersion) ]
-  in Element{..}
+-- renderXml_filterconfig :: FilterConfig -> Element
+-- renderXml_filterconfig FilterConfig{..} =
+--   let elementName       = "filterconfig"
+--       elementNodes      = NodeElement <$> renderXml_params filterParams
+--       elementAttributes = Map.fromList [ ("version", filterVersion) ]
+--   in Element{..}

@@ -10,14 +10,7 @@ License     : BSD-3-Clause
 This module contains functions and data structures for describing
 preset parameters.
 -}
-module Kpp.Param
-  ( ParamValue(..)
-  , prettyParam
-  , prettyParams
-  , parseXml_param
-  , renderXml_param
-  , renderXml_params
-  ) where
+module Kpp.Param where
 
 import           Control.Applicative
 import           Control.Monad.Except
@@ -62,31 +55,3 @@ prettyParam key val = pretty key <> ":" <+> pretty val
 prettyParams :: Map T.Text ParamValue -> Doc ann
 prettyParams = concatWith (<\>) . Map.mapWithKey prettyParam
 
-parseXml_param :: MonadError String m => Element -> m (T.Text, ParamValue)
-parseXml_param = withElement "param" $ \e@Element{..} -> do
-  paramName <- attributeText "name" e
-  paramData <- contentText e
-
-  paramValue <- case Map.lookup "type" elementAttributes of
-    Nothing          -> Unknown  <$> pure         paramData
-    Just "string"    -> String   <$> pure         paramData
-    Just "internal"  -> Internal <$> pure         paramData
-    Just "bytearray" -> Binary   <$> decodeBase64 paramData
-    Just paramType   -> throwError $ "unrecognized param type: " <> show paramType
-  return (paramName, paramValue)
-
-renderXml_param :: T.Text -> ParamValue -> Element
-renderXml_param key val =
-  let (paramType, paramData) = case val of
-        Unknown  v -> (Nothing,          v)
-        String   v -> (Just "string",    v)
-        Internal v -> (Just "internal",  v)
-        Binary   v -> (Just "bytearray", encodeBase64 v)
-      elementName       = "param"
-      elementNodes      = [NodeContent paramData]
-      elementAttributes = Map.fromList $ [("name", key)]
-                          <> maybe empty (\t -> [("type", t)]) paramType
-  in Element{..}
-
-renderXml_params :: Map T.Text ParamValue -> [Element]
-renderXml_params = Map.elems . Map.mapWithKey renderXml_param

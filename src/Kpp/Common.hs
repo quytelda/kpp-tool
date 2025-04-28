@@ -29,8 +29,6 @@ module Kpp.Common
   , isPngData
   ) where
 
--- import           Control.Applicative
--- import           Control.Monad
 import           Control.Exception
 import           Control.Monad.Except
 import qualified Crypto.Hash.MD5        as MD5
@@ -38,15 +36,11 @@ import qualified Data.ByteString        as BS
 import qualified Data.ByteString.Base16 as Base16
 import qualified Data.ByteString.Base64 as Base64
 import qualified Data.ByteString.Lazy   as BL
--- import           Data.Foldable
--- import           Data.Map.Strict        (Map)
 import qualified Data.Map.Strict        as Map
--- import           Data.Maybe
 import qualified Data.Text              as T
 import           Data.Text.Encoding
 import qualified Data.Text.Read         as Read
 import           Prettyprinter          hiding (width)
--- import           System.FilePath
 import           Text.XML
 
 -- | Encode binary data into a base-16 (hex) string.

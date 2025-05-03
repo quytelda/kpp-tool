@@ -54,24 +54,19 @@ instance Exception ParseException where
 eitherThrow :: MonadThrow m => Either String a -> m a
 eitherThrow = either (throwM . ParseException) pure
 
--- | Encode binary data into a base-16 (hex) string.
+-- | Encode binary data into base-16 (hex) text.
 encodeBase16 :: BS.ByteString -> T.Text
 encodeBase16 = decodeUtf8 . Base16.encode
 
--- | Decode a base-16 (hex) string into binary data.
+-- | Decode base-16 (hex) text into binary data.
 decodeBase16 :: MonadThrow m => T.Text -> m BS.ByteString
 decodeBase16 = eitherThrow . Base16.decode . encodeUtf8
 
--- | Encode binary data into a base-64 string.
+-- | Encode binary data into base-64 text.
 encodeBase64 :: BS.ByteString -> T.Text
 encodeBase64 = decodeUtf8 . Base64.encode
 
--- | Decode a base-64 string into binary data.
---
--- Krita presets sometimes contain binary data which is base64-encoded
--- twice. I don't know if that is intentional or a bug since there is
--- no obvious pattern to which data is double encoded. Therefore, we
--- try base64-decoding all encoded data twice if possible.
+-- | Decode base-64 text into binary data.
 decodeBase64 :: MonadThrow m => T.Text -> m BS.ByteString
 decodeBase64 = eitherThrow . Base64.decode . encodeUtf8
 

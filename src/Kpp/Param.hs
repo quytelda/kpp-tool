@@ -12,13 +12,13 @@ preset parameters.
 -}
 module Kpp.Param where
 
+import           Conduit
 import           Control.Applicative
-import           Control.Monad.Except
-import qualified Data.ByteString        as BS
-import           Data.Map.Strict        (Map)
-import qualified Data.Map.Strict        as Map
-import qualified Data.Text              as T
-import           Prettyprinter          hiding (width)
+import qualified Data.ByteString     as BS
+import           Data.Map.Strict     (Map)
+import qualified Data.Map.Strict     as Map
+import qualified Data.Text           as T
+import           Prettyprinter       hiding (width)
 import           Text.XML
 
 import           Kpp.Common
@@ -55,3 +55,31 @@ prettyParam key val = pretty key <> ":" <+> pretty val
 prettyParams :: Map T.Text ParamValue -> Doc ann
 prettyParams = concatWith (<\>) . Map.mapWithKey prettyParam
 
+parseXml_param :: MonadThrow m => Element -> m (T.Text, ParamValue)
+parseXml_param = withElement "param" $ \e@Element{..} -> do
+  paramName <- attributeText "name" e
+  paramData <- contentText e
+
+  paramValue <- case Map.lookup "type" elementAttributes of
+    Nothing          -> Unknown  <$> pure         paramData
+    Just "string"    -> String   <$> pure         paramData
+    Just "internal"  -> Internal <$> pure         paramData
+    Just "bytearray" -> Binary   <$> decodeBase64 paramData
+    Just paramType   -> throwM $ ParseException $ "unrecognized param type: " <> show paramType
+  return (paramName, paramValue)
+
+renderXml_param :: T.Text -> ParamValue -> Element
+renderXml_param key val =
+  let (paramType, paramData) = case val of
+        Unknown  v -> (Nothing,          v)
+        String   v -> (Just "string",    v)
+        Internal v -> (Just "internal",  v)
+        Binary   v -> (Just "bytearray", encodeBase64 v)
+      elementName       = "param"
+      elementNodes      = [NodeContent paramData]
+      elementAttributes = Map.fromList $ [("name", key)]
+                          <> maybe empty (\t -> [("type", t)]) paramType
+  in Element{..}
+
+renderXml_params :: Map T.Text ParamValue -> [Element]
+renderXml_params = Map.elems . Map.mapWithKey renderXml_param

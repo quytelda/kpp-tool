@@ -18,7 +18,7 @@ module Kpp.Filter where
 --   , renderXml_filterconfig
 --   ) where
 
-import           Control.Monad.Except
+import           Conduit
 import           Data.Map.Strict        (Map)
 import qualified Data.Map.Strict        as Map
 import qualified Data.Text              as T
@@ -50,15 +50,15 @@ prettyFilter :: Maybe FilterConfig -> Doc ann
 prettyFilter Nothing             = "None"
 prettyFilter (Just filterConfig) = pretty filterConfig
 
--- parseXml_filterconfig :: MonadError String m => Element -> m FilterConfig
--- parseXml_filterconfig = withElement "filterconfig" $ \e-> do
---   filterVersion <- attributeText "version" e
---   filterParams  <- Map.fromList <$> traverse parseXml_param (childElements e)
---   return FilterConfig{..}
+parseXml_filterconfig :: MonadThrow m => Element -> m FilterConfig
+parseXml_filterconfig = withElement "filterconfig" $ \e -> do
+  filterVersion <- attributeText "version" e
+  filterParams  <- Map.fromList <$> traverse parseXml_param (childElements e)
+  return FilterConfig{..}
 
--- renderXml_filterconfig :: FilterConfig -> Element
--- renderXml_filterconfig FilterConfig{..} =
---   let elementName       = "filterconfig"
---       elementNodes      = NodeElement <$> renderXml_params filterParams
---       elementAttributes = Map.fromList [ ("version", filterVersion) ]
---   in Element{..}
+renderXml_filterconfig :: FilterConfig -> Element
+renderXml_filterconfig FilterConfig{..} =
+  let elementName       = "filterconfig"
+      elementNodes      = NodeElement <$> renderXml_params filterParams
+      elementAttributes = Map.fromList [ ("version", filterVersion) ]
+  in Element{..}

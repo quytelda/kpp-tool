@@ -68,10 +68,7 @@ encodeBase64 = decodeUtf8 . Base64.encode
 -- no obvious pattern to which data is double encoded. Therefore, we
 -- try base64-decoding all encoded data twice if possible.
 decodeBase64 :: MonadError String m => T.Text -> m BS.ByteString
-decodeBase64 t =
-  let bs1 = Base64.decode $ encodeUtf8 t
-      bs2 = Base64.decode =<< bs1
-  in liftEither $ bs2 <> bs1
+decodeBase64 = liftEither . Base64.decode . encodeUtf8
 
 -- | Helper function to parse an Int from a Text value.
 --

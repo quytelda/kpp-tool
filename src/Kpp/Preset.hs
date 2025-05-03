@@ -34,6 +34,7 @@ import           Data.Binary
 import           Data.Binary.Get
 import           Data.Binary.Put
 import qualified Data.ByteString        as BS
+import qualified Data.ByteString.Base64 as Base64
 import           Data.ByteString.Lazy   (ByteString)
 import qualified Data.ByteString.Lazy   as BL
 import           Data.Foldable
@@ -148,7 +149,9 @@ getPreset = do
       xml     = head settingChunks
 
   either fail pure $
-    elementFromLBS xml >>= parseXml_Preset version regularChunks
+    elementFromLBS xml
+    >>= parseXml_Preset version regularChunks
+    >>= doubleDecodePatterns
 
 putPreset :: Preset -> Put
 putPreset preset@Preset{..} = do
@@ -158,7 +161,10 @@ putPreset preset@Preset{..} = do
   let isFollower bs = BL.isPrefixOf "IDAT" bs || BL.isPrefixOf "IEND" bs
       (pre, post) = break isFollower presetIcon
       versionChunk = VersionChunk $ BS.fromStrict presetVersion
-      settingChunk = SettingChunk $ elementToLBS $ renderXml_Preset preset
+      settingChunk = SettingChunk
+                     $ elementToLBS
+                     $ renderXml_Preset
+                     $ doubleEncodePatterns preset
 
   putMagicString
   traverse_ put (RegularChunk <$> pre)
@@ -240,3 +246,51 @@ setPresetIcon pngData preset =
 -- | Get the dimensions of the preset icon image.
 presetIconDimensions :: Preset -> (Word32, Word32)
 presetIconDimensions Preset{..} = runGet getIhdrDimensions $ head presetIcon
+
+--------------------------------------------------------------------------------
+-- Fixes
+
+-- For presets with version 2.2, any embedded pattern is saved in the
+-- "Texture/Pattern/Pattern" parameter as a binary value. In this
+-- case, there will also be a matching "Texture/Pattern/PatternMD5"
+-- parameter which contains an MD5 checksum. However, both these
+-- values will be base64-encoded twice.
+--
+-- To get the actual data, we must decode these values a second time.
+-- Similarly when we saving the preset, we have to encode the data
+-- twice before inserting it into the settings document.
+--
+-- TODO: Does Krita actually require the values to be double-encoded
+-- to load them correctly? If not, we could just output single-encoded
+-- values. Maybe test this against old and new Krita versions.
+--
+-- TODO: Create some presets using pre-5.0 Krita versions for testing.
+
+keyPattern :: T.Text
+keyPattern    = "Texture/Pattern/Pattern"
+
+keyPatternMD5 :: T.Text
+keyPatternMD5 = "Texture/Pattern/PatternMD5"
+
+doubleDecodePatterns :: MonadError String m => Preset -> m Preset
+doubleDecodePatterns preset@Preset{..}
+  | presetVersion == "5.0" = pure preset
+  | otherwise = do
+      params <- mapAdjustM decodeParam keyPattern >=>
+                mapAdjustM decodeParam keyPatternMD5 $ presetParams
+      return preset { presetParams = params }
+  where
+    decodeParam (Binary bs) = Binary <$> (liftEither . Base64.decode) bs
+    decodeParam x           = pure x
+    mapAdjustM f = Map.alterF (traverse f)
+
+doubleEncodePatterns :: Preset -> Preset
+doubleEncodePatterns preset@Preset{..}
+  | presetVersion == "5.0" = preset
+  | otherwise =
+      let params = Map.adjust encodeParam keyPattern .
+                   Map.adjust encodeParam keyPatternMD5 $ presetParams
+      in preset { presetParams = params }
+  where
+    encodeParam (Binary bs) = Binary $ Base64.encode bs
+    encodeParam x           = x

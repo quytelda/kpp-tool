@@ -28,6 +28,7 @@ module Kpp.Common
   , pngMagicString
   , isPngData
   , ParseException(..)
+  , eitherThrow
   ) where
 
 import           Conduit

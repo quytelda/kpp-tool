@@ -27,8 +27,10 @@ module Kpp.Common
   , withElement
   , pngMagicString
   , isPngData
+  , ParseException(..)
   ) where
 
+import           Conduit
 import           Control.Exception
 import           Control.Monad.Except
 import qualified Crypto.Hash.MD5        as MD5
@@ -42,6 +44,12 @@ import           Data.Text.Encoding
 import qualified Data.Text.Read         as Read
 import           Prettyprinter          hiding (width)
 import           Text.XML
+
+data ParseException = ParseException String
+  deriving (Eq, Show)
+
+instance Exception ParseException where
+  displayException (ParseException e) = e
 
 -- | Encode binary data into a base-16 (hex) string.
 encodeBase16 :: BS.ByteString -> T.Text

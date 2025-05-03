@@ -1,3 +1,4 @@
+{-# LANGUAGE LambdaCase        #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards   #-}
 
@@ -9,50 +10,33 @@ License     : BSD-3-Clause
 This module contains functions and data structures for parsing and
 rendering PNG files.
 -}
-module Kpp.Png
-  ( runGetOrFail'
-  , runPut
-  , getNull
-  , getMagicString
-  , putMagicString
-  , getTextChunk
-  , putTextChunk
-  , getZtxtChunk
-  , putZtxtChunk
-  , getItxtChunk
-  , putItxtChunk
-  , getIhdrDimensions
-  , getKeywordChunk
-  , Chunk(..)
-  , getChunk
-  , putChunk
-  , parseSettingsXml
-  ) where
+module Kpp.Png where
 
 import           Codec.Compression.Zlib
+import           Conduit
 import           Control.Applicative
 import           Control.Monad
 import           Data.Binary
 import           Data.Binary.Get
 import           Data.Binary.Put
-import           Data.ByteString.Lazy   (ByteString)
-import qualified Data.ByteString.Lazy   as BL
+import           Data.ByteString                   (ByteString)
+import qualified Data.ByteString                   as BS
+import qualified Data.ByteString.Lazy              as BL
+import qualified Data.Conduit.Combinators          as C
+import           Data.Conduit.Serialization.Binary
 import           Data.Digest.CRC32
+import           Text.XML
 
 import           Kpp.Common
 
--- | Similar to `runGetOrFail` but uses MonadFail and doesn't include
--- information about how much information was consumed.
-runGetOrFail' :: MonadFail f => Get a -> ByteString -> f a
-runGetOrFail' g input = case runGetOrFail g input of
-  Right (_, _, result) -> pure result
-  Left  (_, _, err)    -> fail err
+--------------------------------------------------------------------------------
+-- Binary Parsers and Renderers
 
 getNull :: Get ()
-getNull = do
+getNull = label "getNull" $ do
   w <- getWord8
   unless (w == 0) $
-    fail $ "expected 0, found " <> show w
+    fail $ "expected 0, got " <> show w
 
 putNull :: Put
 putNull = putWord8 0
@@ -60,34 +44,49 @@ putNull = putWord8 0
 -- | Parse a known string.
 expect :: ByteString -> Get ()
 expect expected = do
-  actual <- getLazyByteString $ BL.length expected
+  actual <- getByteString (BS.length expected)
   unless (actual == expected) $
     fail $ "expected " <> show expected <> ", got " <> show actual
 
--- | Consume a PNG magic string or fail when the input does not match.
-getMagicString :: Get ()
-getMagicString = expect pngMagicString
+-- | Unwrap a PNG chunk. The returned "inner chunk" consists of the
+-- chunk type and chunk data.
+--
+-- Fails if the checksum verification is unsuccessful.
+getChunk :: Get ByteString
+getChunk = do
+  chunkLength <- getWord32be
+  chunkData   <- getByteString $ fromIntegral (4 + chunkLength)
+  chunkCsum   <- getWord32be
 
--- | Write a PNG signature.
-putMagicString :: Put
-putMagicString = putLazyByteString pngMagicString
+  if chunkCsum == crc32 chunkData
+    then pure chunkData
+    else fail "checksum mismatch"
+
+putChunk :: ByteString -> Put
+putChunk chunkData = do
+  putWord32be   chunkLength
+  putByteString chunkData
+  putWord32be   chunkCsum
+  where
+    chunkLength = fromIntegral $ BS.length chunkData - 4
+    chunkCsum   = crc32 chunkData
 
 -- | Parse a tEXt chunk with a matching key and return its content.
-getTextChunk :: ByteString -> Get ByteString
+getTextChunk :: ByteString -> Get BL.ByteString
 getTextChunk key = do
   expect "tEXt"
   expect key *> getNull
   getRemainingLazyByteString
 
 -- | Build a tEXt chunk from a given key and value.
-putTextChunk :: ByteString -> ByteString -> Put
+putTextChunk :: ByteString -> BL.ByteString -> Put
 putTextChunk key value = do
-  putLazyByteString "tEXt"
-  putLazyByteString key *> putNull
+  putByteString "tEXt"
+  putByteString key *> putNull
   putLazyByteString value
 
 -- | Parse a zTXt chunk with a matching key and return its decompressed content.
-getZtxtChunk :: ByteString -> Get ByteString
+getZtxtChunk :: ByteString -> Get BL.ByteString
 getZtxtChunk keyword = do
   expect "zTXt"
   expect keyword *> getNull
@@ -95,17 +94,17 @@ getZtxtChunk keyword = do
   decompress <$> getRemainingLazyByteString
 
 -- | Build a zTXt chunk from a given key and value.
-putZtxtChunk :: ByteString -> ByteString -> Put
+putZtxtChunk :: ByteString -> BL.ByteString -> Put
 putZtxtChunk key value = do
-  putLazyByteString "zTXt"
-  putLazyByteString key *> putNull
+  putByteString "zTXt"
+  putByteString key *> putNull
   putWord8 0 -- compression type is always 0
   putLazyByteString $ compress value
 
 -- | Parse a iTXt chunk with a matching key and return its decompressed content.
 --
 -- The language tag and translated keyword fields are ignored.
-getItxtChunk :: ByteString -> Get ByteString
+getItxtChunk :: ByteString -> Get BL.ByteString
 getItxtChunk keyword = do
   expect "iTXt"
   expect keyword *> getNull
@@ -120,10 +119,10 @@ getItxtChunk keyword = do
            else content
 
 -- | Build a (possibly compressed) iTXt chunk from a given key and value.
-putItxtChunk :: Bool -> ByteString -> ByteString -> Put
+putItxtChunk :: Bool -> ByteString -> BL.ByteString -> Put
 putItxtChunk compressed keyword value = do
-  putLazyByteString "iTXt"
-  putLazyByteString keyword *> putNull
+  putByteString "iTXt"
+  putByteString keyword *> putNull
   put compressed -- compression
   putWord8 0 -- compression type is always 0
   putNull -- empty language tag
@@ -133,6 +132,39 @@ putItxtChunk compressed keyword value = do
     then compress value
     else value
 
+-- | Parse any tEXt, zTXt, or iTXt chunk with a matching keyword and
+-- return its content.
+getKeywordChunk :: ByteString -> Get BL.ByteString
+getKeywordChunk key = getTextChunk key <|>
+                      getZtxtChunk key <|>
+                      getItxtChunk key
+
+-- | Test whether this chunk is a textual chunk with a matching
+-- keyword.
+isKeywordChunk :: ByteString -> ByteString -> Bool
+isKeywordChunk key bs = isTextualType && keywordMatches
+  where
+    (chunkType, chunkData) = BS.splitAt 4 bs
+    isTextualType = chunkType == "tEXt" ||
+                    chunkType == "zTXt" ||
+                    chunkType == "iTXt"
+    keywordMatches = (BS.append key "\0") `BS.isPrefixOf` chunkData
+
+isKeywordChunk' :: ByteString -> ByteString -> Bool
+isKeywordChunk' key bs = isTextualType && keywordMatches
+  where
+    (chunkType, chunkData) = BS.splitAt 4 (BS.drop 4 bs)
+    isTextualType = chunkType == "tEXt" ||
+                    chunkType == "zTXt" ||
+                    chunkType == "iTXt"
+    keywordMatches = (BS.append key "\0") `BS.isPrefixOf` chunkData
+
+-- | Determine whether a chunk is a special chunk with KPP settings or
+-- a regular PNG chunk that we can ignore.
+isRegularChunk :: ByteString -> Bool
+isRegularChunk bs = not $
+  isKeywordChunk "version" bs || isKeywordChunk "preset" bs
+
 -- | Extract the width and height of an image from an IHDR chunk.
 getIhdrDimensions :: Get (Word32, Word32)
 getIhdrDimensions = do
@@ -141,61 +173,57 @@ getIhdrDimensions = do
   height <- getWord32be
   return (width, height)
 
--- | Parse any tEXt, zTXt, or iTXt chunk with a matching keyword and
--- return its content.
-getKeywordChunk :: ByteString -> Get ByteString
-getKeywordChunk key = getTextChunk key <|>
-                      getZtxtChunk key <|>
-                      getItxtChunk key
+--------------------------------------------------------------------------------
+-- Conduits
 
--- | Tags for PNG chunk content which are relevant for parsing KPP
--- files.
-data Chunk = VersionChunk ByteString
-           | SettingChunk ByteString
-           | RegularChunk ByteString
-           deriving (Eq, Show)
+-- | Divide a PNG data stream into a stream of unwrapped chunks.
+pngToChunks :: MonadThrow m => ConduitT ByteString ByteString m ()
+pngToChunks = do
+  -- Every PNG starts with the same 8-byte magic string.
+  magic <- takeCE 8 .| sinkLazy
+  unless (magic == pngMagicString) $
+    throwM $ ParseException "invalid PNG data"
 
--- | Parse a single Chunk from a PNG data stream.
---
--- Fail if the checksum verification is unsuccessful.
-getChunk :: Get Chunk
-getChunk = do
-  chunkLength <- getWord32be
-  chunkData   <- getLazyByteString $ fromIntegral (4 + chunkLength)
-  chunkCsum   <- getWord32be
+  conduitGet getChunk
 
-  if chunkCsum == crc32 chunkData
-    then runGetOrFail' getChunkData chunkData
-    else fail "checksum mismatch"
+-- | Combine a stream of unwrapped chunks into a PNG data stream.
+chunksToPng :: Monad m => ConduitT ByteString ByteString m ()
+chunksToPng = do
+  yield (BS.toStrict pngMagicString)
+  C.map putChunk
+    .| conduitPut
+
+-- | Consume exactly one item from a stream, then fail if any input
+-- remains unconsumed.
+sinkExactly1 :: MonadThrow m => ConduitT a Void m a
+sinkExactly1 = do
+  x <- await <* endOfInput
+  maybe (throwM emptyStreamError) pure x
   where
-    getChunkData = VersionChunk <$> getKeywordChunk "version" <|>
-                   SettingChunk <$> getKeywordChunk "preset"  <|>
-                   RegularChunk <$> getRemainingLazyByteString
+    endOfInput = do
+      done <- C.null
+      unless done $
+        throwM extraInputError
+    emptyStreamError = ParseException "empty stream"
+    extraInputError  = ParseException "unconsumed input"
 
--- | Render a complete PNG binary chunk.
-putChunk :: Chunk -> Put
-putChunk chunk = do
-  putWord32be chunkLength
-  putLazyByteString chunkData
-  putWord32be chunkCsum
-  where
-    chunkData = runPut $ case chunk of
-      VersionChunk version -> putTextChunk "version" version
-      SettingChunk xml     -> putZtxtChunk "preset"  xml
-      RegularChunk bytes   -> putLazyByteString bytes
-    chunkLength = fromIntegral $ BL.length chunkData - 4
-    chunkCsum   = crc32 chunkData
+parseKeywordChunks :: MonadThrow m => ByteString -> ConduitT ByteString ByteString m ()
+parseKeywordChunks key =
+  C.filter (isKeywordChunk key)
+  .| conduitGet (BS.toStrict <$> getKeywordChunk key)
 
-instance Binary Chunk where
-  get = getChunk
-  put = putChunk
+parseVersionChunks :: MonadThrow m => ConduitT ByteString Void m ByteString
+parseVersionChunks =
+  parseKeywordChunks "version"
+  .| sinkExactly1
 
--- | Extract just a preset's XML settings data.
-parseSettingsXml :: MonadFail m => BL.ByteString -> m BL.ByteString
-parseSettingsXml = runGetOrFail' $ do
-  getMagicString
-  chunks <- some getChunk
-  case [p | SettingChunk p <- chunks] of
-    [s] -> return s
-    []  -> fail "missing settings chunk"
-    _   -> fail "too many settings chunks"
+parseSettingChunks :: MonadThrow m => ConduitT ByteString Void m Document
+parseSettingChunks =
+  parseKeywordChunks "preset"
+  .| sinkDoc def
+
+parseRegularChunks :: MonadThrow m => ConduitT ByteString Void m BL.ByteString
+parseRegularChunks =
+  C.filter isRegularChunk
+  .| chunksToPng
+  .| sinkLazy

@@ -51,13 +51,16 @@ data ParseException = ParseException String
 instance Exception ParseException where
   displayException (ParseException e) = e
 
+eitherThrow :: MonadThrow m => Either String a -> m a
+eitherThrow = either (throwM . ParseException) pure
+
 -- | Encode binary data into a base-16 (hex) string.
 encodeBase16 :: BS.ByteString -> T.Text
 encodeBase16 = decodeUtf8 . Base16.encode
 
 -- | Decode a base-16 (hex) string into binary data.
-decodeBase16 :: MonadError String m => T.Text -> m BS.ByteString
-decodeBase16 = liftEither . Base16.decode . encodeUtf8
+decodeBase16 :: MonadThrow m => T.Text -> m BS.ByteString
+decodeBase16 = eitherThrow . Base16.decode . encodeUtf8
 
 -- | Encode binary data into a base-64 string.
 encodeBase64 :: BS.ByteString -> T.Text
@@ -69,16 +72,16 @@ encodeBase64 = decodeUtf8 . Base64.encode
 -- twice. I don't know if that is intentional or a bug since there is
 -- no obvious pattern to which data is double encoded. Therefore, we
 -- try base64-decoding all encoded data twice if possible.
-decodeBase64 :: MonadError String m => T.Text -> m BS.ByteString
-decodeBase64 = liftEither . Base64.decode . encodeUtf8
+decodeBase64 :: MonadThrow m => T.Text -> m BS.ByteString
+decodeBase64 = eitherThrow . Base64.decode . encodeUtf8
 
 -- | Helper function to parse an Int from a Text value.
 --
 -- Note: This function fails if unconsumed data remains after parsing.
-decodeInt :: MonadError String m => T.Text -> m Int
+decodeInt :: MonadThrow m => T.Text -> m Int
 decodeInt t = case Read.decimal t of
     Right (n, "") -> pure n
-    _             -> throwError "input contains non-decimal digits"
+    _             -> throwM $ ParseException "input contains non-decimal digits"
 
 -- | Calculate an MD5 checksum.
 --
@@ -126,17 +129,18 @@ elementToLBS documentRoot =
       renderSettings   = def { rsUseCDATA = const True }
   in renderLBS renderSettings Document{..}
 
-elementFromLBS :: MonadError String m => BL.ByteString -> m Element
+elementFromLBS :: MonadThrow m => BL.ByteString -> m Element
 elementFromLBS xml =
   case parseLBS def xml of
     Right doc -> pure $ documentRoot doc
-    Left  err -> throwError $ displayException err
+    Left  err -> throwM err
 
-attributeText :: MonadError String m => Name -> Element -> m T.Text
+attributeText :: MonadThrow m => Name -> Element -> m T.Text
 attributeText name Element{..} =
   case Map.lookup name elementAttributes of
     Just v  -> pure v
-    Nothing -> throwError $ "missing attribute: " <> show (nameLocalName name)
+    Nothing -> throwM $ ParseException $
+      "missing attribute: " <> show (nameLocalName name)
 
 -- | Get all the content nodes inside an element and combine them.
 contentText :: Applicative f => Element -> f T.Text
@@ -147,10 +151,10 @@ childElements :: Element -> [Element]
 childElements e = [child | NodeElement child <- elementNodes e]
 
 -- | Check the `Element` name matches before doing some computation with it.
-withElement :: MonadError String m => Name -> (Element -> m a) -> Element -> m a
+withElement :: MonadThrow m => Name -> (Element -> m a) -> Element -> m a
 withElement name f e@Element{..}
   | name == elementName = f e
-  | otherwise = throwError $ T.unpack $
+  | otherwise = throwM $ ParseException $ T.unpack $
     "expected \"" <> nameLocalName name        <> "\" element, " <>
     "found \""    <> nameLocalName elementName <> "\" element"
 

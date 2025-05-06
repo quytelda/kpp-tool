@@ -138,7 +138,7 @@ renderXml_Preset Preset{..} =
 --------------------------------------------------------------------------------
 -- Conduits
 
-sinkPreset :: MonadThrow m => ConduitT ByteString Void m Preset
+sinkPreset :: MonadThrow m => ConduitT ChunkData Void m Preset
 sinkPreset = do
   (version, doc, icon) <- getZipSink $ (,,)
     <$> ZipSink parseVersionChunks
@@ -241,8 +241,8 @@ setPresetName name preset = preset { presetName = name }
 
 -- | Get the dimensions of the preset icon image.
 presetIconDimensions :: MonadThrow m => Preset -> m (Word32, Word32)
-presetIconDimensions Preset{..} = runConduit $
-  sourceLazy presetIcon .| pngToChunks .| C.take 1 .| sinkGet getIhdrDimensions
+presetIconDimensions Preset{..} = undefined -- runConduit $
+  -- sourceLazy presetIcon .| pngToChunks .| C.take 1 .| sinkGet getIhdrDimensions
 
 --------------------------------------------------------------------------------
 -- Fixes

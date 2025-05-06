@@ -48,47 +48,55 @@ expect expected = do
   unless (actual == expected) $
     fail $ "expected " <> show expected <> ", got " <> show actual
 
+data ChunkData = ChunkData
+  { chunkType :: ByteString
+  , chunkData :: ByteString
+  } deriving (Eq, Show)
+
+chunkCRC :: ChunkData -> Word32
+chunkCRC ChunkData{..} = crc32 $ chunkType <> chunkData
+
 -- | Unwrap a PNG chunk. The returned "inner chunk" consists of the
 -- chunk type and chunk data.
 --
 -- Fails if the checksum verification is unsuccessful.
-getChunk :: Get ByteString
+getChunk :: Get ChunkData
 getChunk = do
   chunkLength <- getWord32be
-  chunkData   <- getByteString $ fromIntegral (4 + chunkLength)
+  chunkType   <- getByteString 4
+  chunkData   <- getByteString $ fromIntegral chunkLength
   chunkCsum   <- getWord32be
+  let chunk = ChunkData{..}
 
-  if chunkCsum == crc32 chunkData
-    then pure chunkData
+  if chunkCsum == chunkCRC chunk
+    then pure chunk
     else fail "checksum mismatch"
 
-putChunk :: ByteString -> Put
-putChunk chunkData = do
+putChunk :: ChunkData -> Put
+putChunk chunk@ChunkData{..} = do
   putWord32be   chunkLength
+  putByteString chunkType
   putByteString chunkData
   putWord32be   chunkCsum
   where
-    chunkLength = fromIntegral $ BS.length chunkData - 4
-    chunkCsum   = crc32 chunkData
+    chunkLength = fromIntegral $ BS.length chunkData
+    chunkCsum   = chunkCRC chunk
 
 -- | Parse a tEXt chunk with a matching key and return its content.
 getTextChunk :: ByteString -> Get BL.ByteString
 getTextChunk key = do
-  expect "tEXt"
   expect key *> getNull
   getRemainingLazyByteString
 
 -- | Build a tEXt chunk from a given key and value.
 putTextChunk :: ByteString -> BL.ByteString -> Put
 putTextChunk key value = do
-  putByteString "tEXt"
   putByteString key *> putNull
   putLazyByteString value
 
 -- | Parse a zTXt chunk with a matching key and return its decompressed content.
 getZtxtChunk :: ByteString -> Get BL.ByteString
 getZtxtChunk keyword = do
-  expect "zTXt"
   expect keyword *> getNull
   void getWord8 -- compression type is always 0
   decompress <$> getRemainingLazyByteString
@@ -96,7 +104,6 @@ getZtxtChunk keyword = do
 -- | Build a zTXt chunk from a given key and value.
 putZtxtChunk :: ByteString -> BL.ByteString -> Put
 putZtxtChunk key value = do
-  putByteString "zTXt"
   putByteString key *> putNull
   putWord8 0 -- compression type is always 0
   putLazyByteString $ compress value
@@ -106,7 +113,6 @@ putZtxtChunk key value = do
 -- The language tag and translated keyword fields are ignored.
 getItxtChunk :: ByteString -> Get BL.ByteString
 getItxtChunk keyword = do
-  expect "iTXt"
   expect keyword *> getNull
   compressed <- get :: Get Bool
   void getWord8 -- compression type is always 0
@@ -121,7 +127,6 @@ getItxtChunk keyword = do
 -- | Build a (possibly compressed) iTXt chunk from a given key and value.
 putItxtChunk :: Bool -> ByteString -> BL.ByteString -> Put
 putItxtChunk compressed keyword value = do
-  putByteString "iTXt"
   putByteString keyword *> putNull
   put compressed -- compression
   putWord8 0 -- compression type is always 0
@@ -134,26 +139,16 @@ putItxtChunk compressed keyword value = do
 
 -- | Parse any tEXt, zTXt, or iTXt chunk with a matching keyword and
 -- return its content.
-getKeywordChunk :: ByteString -> Get BL.ByteString
-getKeywordChunk key = getTextChunk key <|>
-                      getZtxtChunk key <|>
-                      getItxtChunk key
+getKeywordChunk :: ByteString -> ByteString -> Get BL.ByteString
+getKeywordChunk "tEXt" = getTextChunk
+getKeywordChunk "zTXt" = getZtxtChunk
+getKeywordChunk "iTXt" = getItxtChunk
 
 -- | Test whether this chunk is a textual chunk with a matching
 -- keyword.
-isKeywordChunk :: ByteString -> ByteString -> Bool
-isKeywordChunk key bs = isTextualType && keywordMatches
+isKeywordChunk :: ByteString -> ChunkData -> Bool
+isKeywordChunk key ChunkData{..} = isTextualType && keywordMatches
   where
-    (chunkType, chunkData) = BS.splitAt 4 bs
-    isTextualType = chunkType == "tEXt" ||
-                    chunkType == "zTXt" ||
-                    chunkType == "iTXt"
-    keywordMatches = (BS.append key "\0") `BS.isPrefixOf` chunkData
-
-isKeywordChunk' :: ByteString -> ByteString -> Bool
-isKeywordChunk' key bs = isTextualType && keywordMatches
-  where
-    (chunkType, chunkData) = BS.splitAt 4 (BS.drop 4 bs)
     isTextualType = chunkType == "tEXt" ||
                     chunkType == "zTXt" ||
                     chunkType == "iTXt"
@@ -161,9 +156,9 @@ isKeywordChunk' key bs = isTextualType && keywordMatches
 
 -- | Determine whether a chunk is a special chunk with KPP settings or
 -- a regular PNG chunk that we can ignore.
-isRegularChunk :: ByteString -> Bool
-isRegularChunk bs = not $
-  isKeywordChunk "version" bs || isKeywordChunk "preset" bs
+isRegularChunk :: ChunkData -> Bool
+isRegularChunk c = not $
+  isKeywordChunk "version" c || isKeywordChunk "preset" c
 
 -- | Extract the width and height of an image from an IHDR chunk.
 getIhdrDimensions :: Get (Word32, Word32)
@@ -177,7 +172,7 @@ getIhdrDimensions = do
 -- Conduits
 
 -- | Divide a PNG data stream into a stream of unwrapped chunks.
-pngToChunks :: MonadThrow m => ConduitT ByteString ByteString m ()
+pngToChunks :: MonadThrow m => ConduitT ByteString ChunkData m ()
 pngToChunks = do
   -- Every PNG starts with the same 8-byte magic string.
   magic <- takeCE 8 .| sinkLazy
@@ -187,11 +182,11 @@ pngToChunks = do
   conduitGet getChunk
 
 -- | Combine a stream of unwrapped chunks into a PNG data stream.
-chunksToPng :: Monad m => ConduitT ByteString ByteString m ()
+chunksToPng :: Monad m => ConduitT ChunkData ByteString m ()
 chunksToPng = do
-  yield (BS.toStrict pngMagicString)
-  C.map putChunk
-    .| conduitPut
+  sourceLazy pngMagicString
+
+  C.map putChunk .| conduitPut
 
 -- | Consume exactly one item from a stream, then fail if any input
 -- remains unconsumed.
@@ -207,22 +202,34 @@ sinkExactly1 = do
     emptyStreamError = ParseException "empty stream"
     extraInputError  = ParseException "unconsumed input"
 
-parseKeywordChunks :: MonadThrow m => ByteString -> ConduitT ByteString ByteString m ()
+-- TODO: Improve this situation.
+parseKeywordChunk :: MonadThrow m => ByteString -> ChunkData -> m ByteString
+parseKeywordChunk key ChunkData{..} = do
+  getter <- case chunkType of
+    "tEXt" -> pure getTextChunk
+    "zTXt" -> pure getZtxtChunk
+    "iTXt" -> pure getItxtChunk
+    _      -> throwM $ ParseException
+      $ "expected textual chunk, found " <> show chunkType
+
+  pure $ BS.toStrict $ runGet (getter key) (BL.fromStrict chunkData)
+
+parseKeywordChunks :: MonadThrow m => ByteString -> ConduitT ChunkData ByteString m ()
 parseKeywordChunks key =
   C.filter (isKeywordChunk key)
-  .| conduitGet (BS.toStrict <$> getKeywordChunk key)
+  .| awaitForever (parseKeywordChunk key >=> yield)
 
-parseVersionChunks :: MonadThrow m => ConduitT ByteString Void m ByteString
+parseVersionChunks :: MonadThrow m => ConduitT ChunkData Void m ByteString
 parseVersionChunks =
   parseKeywordChunks "version"
   .| sinkExactly1
 
-parseSettingChunks :: MonadThrow m => ConduitT ByteString Void m Document
+parseSettingChunks :: MonadThrow m => ConduitT ChunkData Void m Document
 parseSettingChunks =
   parseKeywordChunks "preset"
   .| sinkDoc def
 
-parseRegularChunks :: MonadThrow m => ConduitT ByteString Void m BL.ByteString
+parseRegularChunks :: MonadThrow m => ConduitT ChunkData Void m BL.ByteString
 parseRegularChunks =
   C.filter isRegularChunk
   .| chunksToPng

@@ -11,7 +11,8 @@ This module contains functions and data structures for parsing and
 rendering PNG files.
 -}
 module Kpp.Png
-  ( getNull
+  ( PngChunk(..)
+  , getNull
   , putNull
   , expect
   , getChunk
@@ -29,11 +30,8 @@ module Kpp.Png
   , chunksToPng
   , pngDimensions
   , parseKeywordChunks
-  , parseVersionChunks
   , renderVersionChunk
-  , parseSettingChunks
   , renderSettingChunk
-  , parseRegularChunks
   ) where
 
 import           Codec.Compression.Zlib
@@ -160,22 +158,6 @@ putItxtChunk compressed keyword value = do
     then compress value
     else value
 
--- | Test whether this chunk is a textual chunk with a matching
--- keyword.
-isKeywordChunk :: BL.ByteString -> PngChunk -> Bool
-isKeywordChunk key PngChunk{..} = isTextualType && keywordMatches
-  where
-    isTextualType = chunkType == "tEXt" ||
-                    chunkType == "zTXt" ||
-                    chunkType == "iTXt"
-    keywordMatches = (BL.append key "\0") `BL.isPrefixOf` chunkData
-
--- | Determine whether a chunk is a special chunk with KPP settings or
--- a regular PNG chunk that we can ignore.
-isRegularChunk :: PngChunk -> Bool
-isRegularChunk c = not $
-  isKeywordChunk "version" c || isKeywordChunk "preset" c
-
 -- | Extract the width and height of an image from an IHDR chunk.
 getIhdrDimensions :: Get (Word32, Word32)
 getIhdrDimensions = do
@@ -211,19 +193,24 @@ pngDimensions =
   .| mapC (BS.toStrict . chunkData) -- TODO: I think this can be better.
   .| sinkGet getIhdrDimensions
 
--- | Consume exactly one item from a stream, then fail if any input
--- remains unconsumed.
-sinkExactly1 :: MonadThrow m => ConduitT a Void m a
-sinkExactly1 = do
-  x <- await <* endOfInput
-  maybe (throwM emptyStreamError) pure x
+--------------------------------------------------------------------------------
+-- Chunk Parsers
+
+-- | Test whether this chunk is a textual chunk with a matching
+-- keyword.
+isKeywordChunk :: BL.ByteString -> PngChunk -> Bool
+isKeywordChunk key PngChunk{..} = isTextualType && keywordMatches
   where
-    endOfInput = do
-      done <- C.null
-      unless done $
-        throwM extraInputError
-    emptyStreamError = ParseException "empty stream"
-    extraInputError  = ParseException "unconsumed input"
+    isTextualType = chunkType == "tEXt" ||
+                    chunkType == "zTXt" ||
+                    chunkType == "iTXt"
+    keywordMatches = (BL.append key "\0") `BL.isPrefixOf` chunkData
+
+-- | Determine whether a chunk is a special chunk with KPP settings or
+-- a regular PNG chunk that we can ignore.
+isRegularChunk :: PngChunk -> Bool
+isRegularChunk c = not $
+  isKeywordChunk "version" c || isKeywordChunk "preset" c
 
 -- | Parse a textual PNG chunk with the given keyword and yields its content.
 parseKeywordChunks :: MonadThrow m => ByteString -> ConduitT PngChunk ByteString m ()
@@ -235,15 +222,7 @@ parseKeywordChunks key = awaitForever $ \PngChunk{..} -> do
     _      -> throwM $ ParseException $
       "expected tEXt, zTXt, or iTXt chunk, but got " <> show chunkType
 
-  case runGetOrFail (parser key) chunkData of
-    Right ( _,      _, res) -> sourceLazy res
-    Left  (bs, offset, err) -> throwM $ ParseError (BS.toStrict bs) offset err
-
-parseVersionChunks :: MonadThrow m => ConduitT PngChunk Void m ByteString
-parseVersionChunks =
-  C.filter (isKeywordChunk "version")
-  .| parseKeywordChunks "version"
-  .| sinkExactly1
+  sourceLazy chunkData .| conduitGet (parser key) .| awaitForever sourceLazy
 
 renderVersionChunk :: ByteString -> PngChunk
 renderVersionChunk version = PngChunk
@@ -251,20 +230,8 @@ renderVersionChunk version = PngChunk
   , chunkData = runPut $ putTextChunk "version" (BS.fromStrict version)
   }
 
-parseSettingChunks :: MonadThrow m => ConduitT PngChunk Void m Document
-parseSettingChunks =
-  C.filter (isKeywordChunk "preset")
-  .| parseKeywordChunks "preset"
-  .| sinkDoc def
-
 renderSettingChunk :: Document -> PngChunk
 renderSettingChunk doc = PngChunk
   { chunkType = "zTXt"
   , chunkData = runPut $ putZtxtChunk "preset" $ renderLBS def doc
   }
-
-parseRegularChunks :: MonadThrow m => ConduitT PngChunk Void m BL.ByteString
-parseRegularChunks =
-  C.filter isRegularChunk
-  .| chunksToPng
-  .| sinkLazy

@@ -135,15 +135,34 @@ renderXml_Preset Preset{..} =
 --------------------------------------------------------------------------------
 -- Conduits
 
+parseVersionChunks :: MonadThrow m => ConduitT PngChunk Void m (Maybe ByteString)
+parseVersionChunks =
+  C.filter (isKeywordChunk "version")
+  .| parseKeywordChunks "version"
+  .| C.head
+
+parseSettingChunks :: MonadThrow m => ConduitT PngChunk Void m Document
+parseSettingChunks =
+  C.filter (isKeywordChunk "preset")
+  .| parseKeywordChunks "preset"
+  .| sinkDoc def
+
+parseRegularChunks :: MonadThrow m => ConduitT PngChunk Void m BL.ByteString
+parseRegularChunks =
+  C.filter isRegularChunk
+  .| chunksToPng
+  .| sinkLazy
+
 pngToPreset :: MonadThrow m => ConduitT ByteString Void m Preset
 pngToPreset = pngToChunks .| do
-  (version, doc, icon) <- getZipSink $ (,,)
+  (mver, doc, icon) <- getZipSink $ (,,)
     <$> ZipSink parseVersionChunks
     <*> ZipSink parseSettingChunks
     <*> ZipSink parseRegularChunks
+  version <- maybe (throwM $ ParseException "missing version chunk") pure mver
 
   parseXml_Preset version icon (documentRoot doc)
-  >>= doubleDecodePatterns
+    >>= doubleDecodePatterns
 
 presetToPng :: MonadThrow m => Preset -> ConduitT i ByteString m ()
 presetToPng preset@Preset{..} = sourceLazy presetIcon .| pngToChunks .|

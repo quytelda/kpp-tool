@@ -167,11 +167,11 @@ loadPreset path = runConduitRes $
   .| pngToChunks
   .| sinkPreset
 
--- -- | Render and write a KPP file.
--- savePreset :: FilePath -> Preset -> IO ()
--- savePreset path preset =
---   let contents = encode preset
---   in BL.writeFile path contents
+-- | Render and write a KPP file.
+savePreset :: FilePath -> Preset -> IO ()
+savePreset path preset = runConduitRes $
+  renderPreset preset
+  .| sinkFile path
 
 -- | Look up the value of a preset parameter.
 lookupParam :: Text -> Preset -> Maybe ParamValue
@@ -210,23 +210,22 @@ insertResource resource@Resource{..}  preset@Preset{..} =
 setPresetName :: Text -> Preset -> Preset
 setPresetName name preset = preset { presetName = name }
 
--- -- | Get a preset's icon image as PNG data.
--- --
--- -- This icon will not contain any of the preset metadata and is just a
--- -- regular PNG file.
--- getPresetIcon :: Preset -> ByteString
--- getPresetIcon Preset{..} = runPut $ putMagicString *> traverse_ put (RegularChunk <$> presetIcon)
+-- | Change a preset's icon image.
+--
+-- The new icon is passed in the form of PNG data. If case the
+-- provided PNG is a Krita preset, we strip out any existing preset
+-- metadata, since we will be inserting our own later.
+setPresetIcon :: MonadThrow m => BL.ByteString -> Preset -> m Preset
+setPresetIcon pngData preset = do
+  icon <- runConduit
+    $ sourceLazy pngData
+    .| pngToChunks
+    .| C.filter (isKeywordChunk "version")
+    .| C.filter (isKeywordChunk "preset")
+    .| chunksToPng
+    .| sinkLazy
 
--- -- | Change a preset's icon image.
--- --
--- -- The new icon is passed in the form of PNG data. In the case the PNG
--- -- is a Krita preset, we strip out any existing preset metadata, since
--- -- we will be inserting our own later.
--- setPresetIcon :: MonadError String m => ByteString -> Preset -> m Preset
--- setPresetIcon pngData preset =
---   case runGetOrFail (getMagicString *> some getChunk) pngData of
---     Left  (_, _, err)    -> throwError err
---     Right (_, _, chunks) -> pure preset { presetIcon = [c | RegularChunk c <- chunks] }
+  return preset { presetIcon = icon }
 
 -- | Get the dimensions of the preset icon image.
 presetIconDimensions :: MonadThrow m => Preset -> m (Word32, Word32)

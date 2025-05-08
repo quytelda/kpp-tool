@@ -135,8 +135,8 @@ renderXml_Preset Preset{..} =
 --------------------------------------------------------------------------------
 -- Conduits
 
-sinkPreset :: MonadThrow m => ConduitT PngChunk Void m Preset
-sinkPreset = do
+pngToPreset :: MonadThrow m => ConduitT ByteString Void m Preset
+pngToPreset = pngToChunks .| do
   (version, doc, icon) <- getZipSink $ (,,)
     <$> ZipSink parseVersionChunks
     <*> ZipSink parseSettingChunks
@@ -145,8 +145,8 @@ sinkPreset = do
   parseXml_Preset version icon (documentRoot doc)
   >>= doubleDecodePatterns
 
-renderPreset :: MonadThrow m => Preset -> ConduitT i ByteString m ()
-renderPreset preset@Preset{..} = sourceLazy presetIcon .| pngToChunks .|
+presetToPng :: MonadThrow m => Preset -> ConduitT i ByteString m ()
+presetToPng preset@Preset{..} = sourceLazy presetIcon .| pngToChunks .|
   (do C.take 2
       yield $ renderVersionChunk presetVersion
       yield
@@ -159,16 +159,11 @@ renderPreset preset@Preset{..} = sourceLazy presetIcon .| pngToChunks .|
 
 -- | Read and parse a KPP file.
 loadPreset :: FilePath -> IO Preset
-loadPreset path = runConduitRes $
-  sourceFile path
-  .| pngToChunks
-  .| sinkPreset
+loadPreset path = runConduitRes $ sourceFile path .| pngToPreset
 
 -- | Render and write a KPP file.
 savePreset :: FilePath -> Preset -> IO ()
-savePreset path preset = runConduitRes $
-  renderPreset preset
-  .| sinkFile path
+savePreset path preset = runConduitRes $ presetToPng preset .| sinkFile path
 
 -- | Look up the value of a preset parameter.
 lookupParam :: Text -> Preset -> Maybe ParamValue

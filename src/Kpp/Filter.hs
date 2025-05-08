@@ -10,19 +10,18 @@ License     : BSD-3-Clause
 This module contains functions and data structures for preset filter
 configurations.
 -}
-module Kpp.Filter where
--- module Kpp.Filter
---   ( FilterConfig(..)
---   , prettyFilter
---   , parseXml_filterconfig
---   , renderXml_filterconfig
---   ) where
+module Kpp.Filter
+  ( FilterConfig(..)
+  , prettyFilter
+  , parseXml_filterconfig
+  , renderXml_filterconfig
+  ) where
 
 import           Conduit
-import           Data.Map.Strict        (Map)
-import qualified Data.Map.Strict        as Map
-import qualified Data.Text              as T
-import           Prettyprinter          hiding (width)
+import           Data.Map.Strict (Map)
+import qualified Data.Map.Strict as Map
+import qualified Data.Text       as T
+import           Prettyprinter   hiding (width)
 import           Text.XML
 
 import           Kpp.Common

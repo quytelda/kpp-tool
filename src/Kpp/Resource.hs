@@ -11,18 +11,17 @@ This module contains functions and data types for describing embedded
 resources. An embedded resource is a Krita resource (e.g. brush tip,
 pattern) which is embedded inside the XML of a preset file.
 -}
-module Kpp.Resource where
--- module Kpp.Resource
---   ( Resource(..)
---   , resourceMD5
---   , loadResource
---   , saveResource
---   , prettyResources
---   , parseXml_resource
---   , renderXml_resource
---   , parseXml_resources
---   , renderXml_resources
---   ) where
+module Kpp.Resource
+  ( Resource(..)
+  , prettyResources
+  , resourceMD5
+  , loadResource
+  , saveResource
+  , parseXml_resource
+  , renderXml_resource
+  , parseXml_resources
+  , renderXml_resources
+  ) where
 
 import           Conduit
 import           Control.Monad

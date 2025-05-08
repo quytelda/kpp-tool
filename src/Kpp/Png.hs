@@ -10,7 +10,31 @@ License     : BSD-3-Clause
 This module contains functions and data structures for parsing and
 rendering PNG files.
 -}
-module Kpp.Png where
+module Kpp.Png
+  ( getNull
+  , putNull
+  , expect
+  , getChunk
+  , putChunk
+  , getTextChunk
+  , putTextChunk
+  , getZtxtChunk
+  , putZtxtChunk
+  , getItxtChunk
+  , putItxtChunk
+  , isKeywordChunk
+  , isRegularChunk
+  , getIhdrDimensions
+  , pngToChunks
+  , chunksToPng
+  , pngDimensions
+  , parseKeywordChunks
+  , parseVersionChunks
+  , renderVersionChunk
+  , parseSettingChunks
+  , renderSettingChunk
+  , parseRegularChunks
+  ) where
 
 import           Codec.Compression.Zlib
 import           Conduit
@@ -48,8 +72,8 @@ expect expected = do
     fail $ "expected " <> show expected <> ", got " <> show actual
 
 data PngChunk = PngChunk
-  { chunkType :: ByteString
-  , chunkData :: BL.ByteString
+  { chunkType :: !ByteString
+  , chunkData :: !BL.ByteString
   } deriving (Eq, Show)
 
 chunkCRC :: PngChunk -> Word32

@@ -10,41 +10,41 @@ License     : BSD-3-Clause
 This module contains functions and data structures for parsing,
 rendering, and manipulating brush presets (KPP files).
 -}
-module Kpp.Preset where
-
--- module Kpp.Preset
---   ( parseSettingsXml
---   , Preset(..)
---   , loadPreset
---   , savePreset
---   , setPresetName
---   , lookupParam
---   , insertParam
---   , lookupResourceByName
---   , lookupResourceByFile
---   , lookupResourceByMD5
---   , insertResource
---   , getPresetIcon
---   , setPresetIcon
---   , presetIconDimensions
---   ) where
+module Kpp.Preset
+  ( Preset(..)
+  , parseXml_Preset
+  , renderXml_Preset
+  , pngToPreset
+  , presetToPng
+  , loadPreset
+  , savePreset
+  , lookupParam
+  , insertParam
+  , lookupResourceByName
+  , lookupResourceByFile
+  , lookupResourceByMD5
+  , insertResource
+  , setPresetName
+  , setPresetIcon
+  , presetIconDimensions
+  ) where
 
 import           Conduit
 import           Control.Applicative
 import           Control.Monad
 import           Data.Binary
-import           Data.ByteString                   (ByteString)
-import qualified Data.ByteString                   as BS
-import qualified Data.ByteString.Base64            as Base64
-import qualified Data.ByteString.Lazy              as BL
-import qualified Data.Conduit.Combinators          as C
+import           Data.ByteString          (ByteString)
+import qualified Data.ByteString          as BS
+import qualified Data.ByteString.Base64   as Base64
+import qualified Data.ByteString.Lazy     as BL
+import qualified Data.Conduit.Combinators as C
 import           Data.Foldable
-import           Data.Map.Strict                   (Map)
-import qualified Data.Map.Strict                   as Map
+import           Data.Map.Strict          (Map)
+import qualified Data.Map.Strict          as Map
 import           Data.Maybe
-import           Data.Text                         (Text)
-import qualified Data.Text                         as T
-import           Prettyprinter                     hiding (width)
+import           Data.Text                (Text)
+import qualified Data.Text                as T
+import           Prettyprinter            hiding (width)
 import           Text.XML
 
 import           Kpp.Common

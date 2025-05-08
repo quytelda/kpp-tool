@@ -10,7 +10,14 @@ License     : BSD-3-Clause
 This module contains functions and data structures for describing
 preset parameters.
 -}
-module Kpp.Param where
+module Kpp.Param
+  ( ParamValue(..)
+  , prettyParam
+  , prettyParams
+  , parseXml_param
+  , renderXml_param
+  , renderXml_params
+  ) where
 
 import           Conduit
 import           Control.Applicative

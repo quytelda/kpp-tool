@@ -137,13 +137,6 @@ putItxtChunk compressed keyword value = do
     then compress value
     else value
 
--- | Parse any tEXt, zTXt, or iTXt chunk with a matching keyword and
--- return its content.
-getKeywordChunk :: ByteString -> ByteString -> Get BL.ByteString
-getKeywordChunk "tEXt" = getTextChunk
-getKeywordChunk "zTXt" = getZtxtChunk
-getKeywordChunk "iTXt" = getItxtChunk
-
 -- | Test whether this chunk is a textual chunk with a matching
 -- keyword.
 isKeywordChunk :: ByteString -> ChunkData -> Bool
@@ -202,31 +195,30 @@ sinkExactly1 = do
     emptyStreamError = ParseException "empty stream"
     extraInputError  = ParseException "unconsumed input"
 
--- TODO: Improve this situation.
-parseKeywordChunk :: MonadThrow m => ByteString -> ChunkData -> m ByteString
-parseKeywordChunk key ChunkData{..} = do
-  getter <- case chunkType of
+-- | Parse a textual PNG chunk with the given keyword and yields its content.
+parseKeywordChunks :: MonadThrow m => ByteString -> ConduitT ChunkData ByteString m ()
+parseKeywordChunks key = awaitForever $ \ChunkData{..} -> do
+  parser <- case chunkType of
     "tEXt" -> pure getTextChunk
     "zTXt" -> pure getZtxtChunk
     "iTXt" -> pure getItxtChunk
-    _      -> throwM $ ParseException
-      $ "expected textual chunk, found " <> show chunkType
+    _      -> throwM $ ParseException $
+      "expected tEXt, zTXt, or iTXt chunk, but got " <> show chunkType
 
-  pure $ BS.toStrict $ runGet (getter key) (BL.fromStrict chunkData)
-
-parseKeywordChunks :: MonadThrow m => ByteString -> ConduitT ChunkData ByteString m ()
-parseKeywordChunks key =
-  C.filter (isKeywordChunk key)
-  .| awaitForever (parseKeywordChunk key >=> yield)
+  case runGetOrFail (parser key) (BL.fromStrict chunkData) of
+    Right ( _,      _, res) -> sourceLazy res
+    Left  (bs, offset, err) -> throwM $ ParseError (BS.toStrict bs) offset err
 
 parseVersionChunks :: MonadThrow m => ConduitT ChunkData Void m ByteString
 parseVersionChunks =
-  parseKeywordChunks "version"
+  C.filter (isKeywordChunk "version")
+  .| parseKeywordChunks "version"
   .| sinkExactly1
 
 parseSettingChunks :: MonadThrow m => ConduitT ChunkData Void m Document
 parseSettingChunks =
-  parseKeywordChunks "preset"
+  C.filter (isKeywordChunk "preset")
+  .| parseKeywordChunks "preset"
   .| sinkDoc def
 
 parseRegularChunks :: MonadThrow m => ConduitT ChunkData Void m BL.ByteString

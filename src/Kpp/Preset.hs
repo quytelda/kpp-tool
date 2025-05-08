@@ -138,7 +138,7 @@ renderXml_Preset Preset{..} =
 --------------------------------------------------------------------------------
 -- Conduits
 
-sinkPreset :: MonadThrow m => ConduitT ChunkData Void m Preset
+sinkPreset :: MonadThrow m => ConduitT PngChunk Void m Preset
 sinkPreset = do
   (version, doc, icon) <- getZipSink $ (,,)
     <$> ZipSink parseVersionChunks

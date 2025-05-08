@@ -48,32 +48,32 @@ expect expected = do
   unless (actual == expected) $
     fail $ "expected " <> show expected <> ", got " <> show actual
 
-data ChunkData = ChunkData
+data PngChunk = PngChunk
   { chunkType :: ByteString
   , chunkData :: ByteString
   } deriving (Eq, Show)
 
-chunkCRC :: ChunkData -> Word32
-chunkCRC ChunkData{..} = crc32 $ chunkType <> chunkData
+chunkCRC :: PngChunk -> Word32
+chunkCRC PngChunk{..} = crc32 $ chunkType <> chunkData
 
 -- | Unwrap a PNG chunk. The returned "inner chunk" consists of the
 -- chunk type and chunk data.
 --
 -- Fails if the checksum verification is unsuccessful.
-getChunk :: Get ChunkData
+getChunk :: Get PngChunk
 getChunk = do
   chunkLength <- getWord32be
   chunkType   <- getByteString 4
   chunkData   <- getByteString $ fromIntegral chunkLength
   chunkCsum   <- getWord32be
-  let chunk = ChunkData{..}
+  let chunk = PngChunk{..}
 
   if chunkCsum == chunkCRC chunk
     then pure chunk
     else fail "checksum mismatch"
 
-putChunk :: ChunkData -> Put
-putChunk chunk@ChunkData{..} = do
+putChunk :: PngChunk -> Put
+putChunk chunk@PngChunk{..} = do
   putWord32be   chunkLength
   putByteString chunkType
   putByteString chunkData
@@ -139,8 +139,8 @@ putItxtChunk compressed keyword value = do
 
 -- | Test whether this chunk is a textual chunk with a matching
 -- keyword.
-isKeywordChunk :: ByteString -> ChunkData -> Bool
-isKeywordChunk key ChunkData{..} = isTextualType && keywordMatches
+isKeywordChunk :: ByteString -> PngChunk -> Bool
+isKeywordChunk key PngChunk{..} = isTextualType && keywordMatches
   where
     isTextualType = chunkType == "tEXt" ||
                     chunkType == "zTXt" ||
@@ -149,7 +149,7 @@ isKeywordChunk key ChunkData{..} = isTextualType && keywordMatches
 
 -- | Determine whether a chunk is a special chunk with KPP settings or
 -- a regular PNG chunk that we can ignore.
-isRegularChunk :: ChunkData -> Bool
+isRegularChunk :: PngChunk -> Bool
 isRegularChunk c = not $
   isKeywordChunk "version" c || isKeywordChunk "preset" c
 
@@ -164,7 +164,7 @@ getIhdrDimensions = do
 -- Conduits
 
 -- | Divide a PNG data stream into a stream of unwrapped chunks.
-pngToChunks :: MonadThrow m => ConduitT ByteString ChunkData m ()
+pngToChunks :: MonadThrow m => ConduitT ByteString PngChunk m ()
 pngToChunks = do
   -- Every PNG starts with the same 8-byte magic string.
   magic <- takeCE 8 .| sinkLazy
@@ -174,7 +174,7 @@ pngToChunks = do
   conduitGet getChunk
 
 -- | Combine a stream of unwrapped chunks into a PNG data stream.
-chunksToPng :: Monad m => ConduitT ChunkData ByteString m ()
+chunksToPng :: Monad m => ConduitT PngChunk ByteString m ()
 chunksToPng = do
   sourceLazy pngMagicString
 
@@ -203,8 +203,8 @@ sinkExactly1 = do
     extraInputError  = ParseException "unconsumed input"
 
 -- | Parse a textual PNG chunk with the given keyword and yields its content.
-parseKeywordChunks :: MonadThrow m => ByteString -> ConduitT ChunkData ByteString m ()
-parseKeywordChunks key = awaitForever $ \ChunkData{..} -> do
+parseKeywordChunks :: MonadThrow m => ByteString -> ConduitT PngChunk ByteString m ()
+parseKeywordChunks key = awaitForever $ \PngChunk{..} -> do
   parser <- case chunkType of
     "tEXt" -> pure getTextChunk
     "zTXt" -> pure getZtxtChunk
@@ -216,19 +216,19 @@ parseKeywordChunks key = awaitForever $ \ChunkData{..} -> do
     Right ( _,      _, res) -> sourceLazy res
     Left  (bs, offset, err) -> throwM $ ParseError (BS.toStrict bs) offset err
 
-parseVersionChunks :: MonadThrow m => ConduitT ChunkData Void m ByteString
+parseVersionChunks :: MonadThrow m => ConduitT PngChunk Void m ByteString
 parseVersionChunks =
   C.filter (isKeywordChunk "version")
   .| parseKeywordChunks "version"
   .| sinkExactly1
 
-parseSettingChunks :: MonadThrow m => ConduitT ChunkData Void m Document
+parseSettingChunks :: MonadThrow m => ConduitT PngChunk Void m Document
 parseSettingChunks =
   C.filter (isKeywordChunk "preset")
   .| parseKeywordChunks "preset"
   .| sinkDoc def
 
-parseRegularChunks :: MonadThrow m => ConduitT ChunkData Void m BL.ByteString
+parseRegularChunks :: MonadThrow m => ConduitT PngChunk Void m BL.ByteString
 parseRegularChunks =
   C.filter isRegularChunk
   .| chunksToPng

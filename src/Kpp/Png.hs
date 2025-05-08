@@ -235,11 +235,10 @@ parseSettingChunks =
   .| sinkDoc def
 
 renderSettingChunk :: Document -> PngChunk
-renderSettingChunk doc = PngChunk{..}
-  where
-    xml = renderLBS def doc
-    chunkType = "zTXt"
-    chunkData = runPut $ putZtxtChunk "preset" chunkData
+renderSettingChunk doc = PngChunk
+  { chunkType = "zTXt"
+  , chunkData = runPut $ putZtxtChunk "preset" $ renderLBS def doc
+  }
 
 parseRegularChunks :: MonadThrow m => ConduitT PngChunk Void m BL.ByteString
 parseRegularChunks =

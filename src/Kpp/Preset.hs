@@ -33,14 +33,11 @@ import           Conduit
 import           Control.Applicative
 import           Control.Monad
 import           Data.Binary
-import           Data.Binary.Get
-import           Data.Binary.Put
 import           Data.ByteString                   (ByteString)
 import qualified Data.ByteString                   as BS
 import qualified Data.ByteString.Base64            as Base64
 import qualified Data.ByteString.Lazy              as BL
 import qualified Data.Conduit.Combinators          as C
-import           Data.Conduit.Serialization.Binary
 import           Data.Foldable
 import           Data.Map.Strict                   (Map)
 import qualified Data.Map.Strict                   as Map

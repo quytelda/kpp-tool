@@ -35,7 +35,6 @@ module Kpp.Common
 
 import           Conduit
 import           Control.Exception
-import           Control.Monad.Except
 import qualified Crypto.Hash.MD5        as MD5
 import qualified Data.ByteString        as BS
 import qualified Data.ByteString.Base16 as Base16

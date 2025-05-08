@@ -14,7 +14,6 @@ module Kpp.Png where
 
 import           Codec.Compression.Zlib
 import           Conduit
-import           Control.Applicative
 import           Control.Monad
 import           Data.Binary
 import           Data.Binary.Get

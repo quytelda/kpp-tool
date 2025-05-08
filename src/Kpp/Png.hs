@@ -50,11 +50,11 @@ expect expected = do
 
 data PngChunk = PngChunk
   { chunkType :: ByteString
-  , chunkData :: ByteString
+  , chunkData :: BL.ByteString
   } deriving (Eq, Show)
 
 chunkCRC :: PngChunk -> Word32
-chunkCRC PngChunk{..} = crc32 $ chunkType <> chunkData
+chunkCRC PngChunk{..} = crc32Update (crc32 chunkType) chunkData
 
 -- | Unwrap a PNG chunk. The returned "inner chunk" consists of the
 -- chunk type and chunk data.
@@ -64,7 +64,7 @@ getChunk :: Get PngChunk
 getChunk = do
   chunkLength <- getWord32be
   chunkType   <- getByteString 4
-  chunkData   <- getByteString $ fromIntegral chunkLength
+  chunkData   <- getLazyByteString $ fromIntegral chunkLength
   chunkCsum   <- getWord32be
   let chunk = PngChunk{..}
 
@@ -76,10 +76,10 @@ putChunk :: PngChunk -> Put
 putChunk chunk@PngChunk{..} = do
   putWord32be   chunkLength
   putByteString chunkType
-  putByteString chunkData
+  putLazyByteString chunkData
   putWord32be   chunkCsum
   where
-    chunkLength = fromIntegral $ BS.length chunkData
+    chunkLength = fromIntegral $ BL.length chunkData
     chunkCsum   = chunkCRC chunk
 
 -- | Parse a tEXt chunk with a matching key and return its content.
@@ -139,13 +139,13 @@ putItxtChunk compressed keyword value = do
 
 -- | Test whether this chunk is a textual chunk with a matching
 -- keyword.
-isKeywordChunk :: ByteString -> PngChunk -> Bool
+isKeywordChunk :: BL.ByteString -> PngChunk -> Bool
 isKeywordChunk key PngChunk{..} = isTextualType && keywordMatches
   where
     isTextualType = chunkType == "tEXt" ||
                     chunkType == "zTXt" ||
                     chunkType == "iTXt"
-    keywordMatches = (BS.append key "\0") `BS.isPrefixOf` chunkData
+    keywordMatches = (BL.append key "\0") `BL.isPrefixOf` chunkData
 
 -- | Determine whether a chunk is a special chunk with KPP settings or
 -- a regular PNG chunk that we can ignore.
@@ -185,7 +185,7 @@ pngDimensions :: MonadThrow m => ConduitT ByteString o m (Word32, Word32)
 pngDimensions =
   pngToChunks
   .| C.filter (chunkType .== "IHDR")
-  .| mapC chunkData
+  .| mapC (BS.toStrict . chunkData) -- TODO: I think this can be better.
   .| sinkGet getIhdrDimensions
 
 -- | Consume exactly one item from a stream, then fail if any input
@@ -212,7 +212,7 @@ parseKeywordChunks key = awaitForever $ \PngChunk{..} -> do
     _      -> throwM $ ParseException $
       "expected tEXt, zTXt, or iTXt chunk, but got " <> show chunkType
 
-  case runGetOrFail (parser key) (BL.fromStrict chunkData) of
+  case runGetOrFail (parser key) chunkData of
     Right ( _,      _, res) -> sourceLazy res
     Left  (bs, offset, err) -> throwM $ ParseError (BS.toStrict bs) offset err
 
@@ -222,11 +222,24 @@ parseVersionChunks =
   .| parseKeywordChunks "version"
   .| sinkExactly1
 
+renderVersionChunk :: ByteString -> PngChunk
+renderVersionChunk version = PngChunk
+  { chunkType = "tEXt"
+  , chunkData = runPut $ putTextChunk "version" (BS.fromStrict version)
+  }
+
 parseSettingChunks :: MonadThrow m => ConduitT PngChunk Void m Document
 parseSettingChunks =
   C.filter (isKeywordChunk "preset")
   .| parseKeywordChunks "preset"
   .| sinkDoc def
+
+renderSettingChunk :: Document -> PngChunk
+renderSettingChunk doc = PngChunk{..}
+  where
+    xml = renderLBS def doc
+    chunkType = "zTXt"
+    chunkData = runPut $ putZtxtChunk "preset" chunkData
 
 parseRegularChunks :: MonadThrow m => ConduitT PngChunk Void m BL.ByteString
 parseRegularChunks =

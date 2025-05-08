@@ -29,6 +29,7 @@ module Kpp.Common
   , isPngData
   , ParseException(..)
   , eitherThrow
+  , (.==)
   ) where
 
 import           Conduit
@@ -54,6 +55,9 @@ instance Exception ParseException where
 
 eitherThrow :: MonadThrow m => Either String a -> m a
 eitherThrow = either (throwM . ParseException) pure
+
+(.==) :: Eq a => (t -> a) -> a -> t -> Bool
+f .== x = \r -> f r == x
 
 -- | Encode binary data into base-16 (hex) text.
 encodeBase16 :: BS.ByteString -> T.Text

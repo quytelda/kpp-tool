@@ -156,7 +156,6 @@ isRegularChunk c = not $
 -- | Extract the width and height of an image from an IHDR chunk.
 getIhdrDimensions :: Get (Word32, Word32)
 getIhdrDimensions = do
-  expect "IHDR"
   width  <- getWord32be
   height <- getWord32be
   return (width, height)
@@ -180,6 +179,14 @@ chunksToPng = do
   sourceLazy pngMagicString
 
   C.map putChunk .| conduitPut
+
+-- | Query the dimensions of a PNG image.
+pngDimensions :: MonadThrow m => ConduitT ByteString o m (Word32, Word32)
+pngDimensions =
+  pngToChunks
+  .| C.filter (chunkType .== "IHDR")
+  .| mapC chunkData
+  .| sinkGet getIhdrDimensions
 
 -- | Consume exactly one item from a stream, then fail if any input
 -- remains unconsumed.

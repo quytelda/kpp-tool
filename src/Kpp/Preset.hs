@@ -241,8 +241,7 @@ setPresetName name preset = preset { presetName = name }
 
 -- | Get the dimensions of the preset icon image.
 presetIconDimensions :: MonadThrow m => Preset -> m (Word32, Word32)
-presetIconDimensions Preset{..} = undefined -- runConduit $
-  -- sourceLazy presetIcon .| pngToChunks .| C.take 1 .| sinkGet getIhdrDimensions
+presetIconDimensions Preset{..} = runConduit $ sourceLazy presetIcon .| pngDimensions
 
 --------------------------------------------------------------------------------
 -- Fixes

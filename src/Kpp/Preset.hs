@@ -148,28 +148,17 @@ sinkPreset = do
   parseXml_Preset version icon (documentRoot doc)
   >>= doubleDecodePatterns
 
--- putPreset :: Preset -> Put
--- putPreset preset@Preset{..} = do
---   -- The metadata chunks must be inserted after the IHDR chunk.
---   -- Krita inserts the elements following the IHDR and pHYs chunks,
---   -- but before the IDAT chunks, so this code matches that behavior.
---   let isFollower bs = BL.isPrefixOf "IDAT" bs || BL.isPrefixOf "IEND" bs
---       (pre, post) = break isFollower presetIcon
---       versionChunk = VersionChunk $ BS.fromStrict presetVersion
---       settingChunk = SettingChunk
---                      $ elementToLBS
---                      $ renderXml_Preset
---                      $ doubleEncodePatterns preset
-
---   putMagicString
---   traverse_ put (RegularChunk <$> pre)
---   put settingChunk
---   put versionChunk
---   traverse_ put (RegularChunk <$> post)
-
--- instance Binary Preset where
---   get = getPreset
---   put = putPreset
+renderPreset :: MonadThrow m => Preset -> ConduitT i ByteString m ()
+renderPreset preset@Preset{..} = sourceLazy presetIcon .| pngToChunks .|
+  (do C.take 2
+      yield $ renderVersionChunk presetVersion
+      yield
+        $ renderSettingChunk
+        $ makeDocument
+        $ renderXml_Preset
+        $ doubleEncodePatterns preset
+      awaitForever yield
+  ) .| chunksToPng
 
 -- | Read and parse a KPP file.
 loadPreset :: FilePath -> IO Preset

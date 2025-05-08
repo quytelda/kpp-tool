@@ -30,6 +30,7 @@ module Kpp.Common
   , ParseException(..)
   , eitherThrow
   , (.==)
+  , makeDocument
   ) where
 
 import           Conduit
@@ -122,12 +123,16 @@ prettyByteData bytes
 -- XML --
 ---------
 
-elementToLBS :: Element -> BL.ByteString
-elementToLBS documentRoot =
+makeDocument :: Element -> Document
+makeDocument documentRoot =
   let documentPrologue = Prologue [] Nothing []
       documentEpilogue = []
-      renderSettings   = def { rsUseCDATA = const True }
-  in renderLBS renderSettings Document{..}
+  in Document{..}
+
+elementToLBS :: Element -> BL.ByteString
+elementToLBS = renderLBS renderSettings . makeDocument
+  where
+    renderSettings = def { rsUseCDATA = const True }
 
 elementFromLBS :: MonadThrow m => BL.ByteString -> m Element
 elementFromLBS xml =

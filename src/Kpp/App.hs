@@ -1,6 +1,7 @@
-{-# LANGUAGE FlexibleInstances #-}
-{-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE RecordWildCards   #-}
+{-# LANGUAGE FlexibleInstances   #-}
+{-# LANGUAGE OverloadedStrings   #-}
+{-# LANGUAGE RecordWildCards     #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 
 {-|
 Module      : Kpp.App
@@ -18,6 +19,7 @@ module Kpp.App
 
 import           Conduit
 import           Control.Applicative
+import           Control.Exception
 import           Control.Monad
 import           Control.Monad.Reader
 import           Control.Monad.State
@@ -53,6 +55,16 @@ kppToolVersion = Paths_kpp_tool.version
 --------------------------------------------------------------------------------
 -- Argument Parsing
 
+-- | A type for argument parsing errors.
+data RuntimeError = RuntimeError String
+                  | ArgumentError String
+  deriving (Eq, Show)
+
+instance Exception RuntimeError
+
+-- | Try to break a list at the first occurence of some delimiter,
+-- dropping the delimiter from the result. If no delimiter is found,
+-- Nothing is returned.
 breakOn :: Eq a => a -> [a] -> Maybe ([a], [a])
 breakOn c = go []
   where
@@ -78,16 +90,25 @@ commaSep xs = uncurry (:) . second commaSep . splitOnComma $ xs
 class FromArgument a where
   fromArgument :: MonadThrow m => String -> m a
 
+  -- | This is a type hint to be displayed in help output and error
+  -- messages. The default is @"VALUE"@.
+  --
+  -- The `String` is wrapped in a `Const` functor here so we can use a
+  -- phantom type to select the correct instance without providing an
+  -- actual value (using ScopedTypeVariables).
+  argInfo :: Const String a
+  argInfo = Const "VALUE"
+
 fromArgumentOptional :: (FromArgument a, MonadThrow m) => Maybe String -> m (Maybe a)
-fromArgumentOptional marg = case marg of
-  Just arg -> Just <$> fromArgument arg
-  Nothing -> pure Nothing
+fromArgumentOptional = traverse fromArgument
 
 instance FromArgument String where
   fromArgument = pure
+  argInfo = Const "STRING"
 
 instance FromArgument Text where
   fromArgument = pure . T.pack
+  argInfo = Const "STRING"
 
 instance FromArgument ParamValue where
   fromArgument arg = case breakOn ':' arg of
@@ -95,17 +116,20 @@ instance FromArgument ParamValue where
     Just ("string",   val) -> String   <$> pure (T.pack val)
     Just ("internal", val) -> Internal <$> pure (T.pack val)
     Just ("binary",   val) -> Binary   <$> decodeBase64 (T.pack val)
-    _                      -> throwM $ ParseException $
+    _                      -> throwM $ ArgumentError $
       "expected TYPE:VALUE, but got " <> show arg
+  argInfo = Const "TYPE:VALUE"
 
 instance (FromArgument k, FromArgument a) => FromArgument (k, a) where
   fromArgument arg = case breakOn '=' arg of
     Just (key, val) -> (,) <$> fromArgument key <*> fromArgument val
-    Nothing         -> throwM $ ParseException $
+    Nothing         -> throwM $ ArgumentError $
       "expected KEY=VALUE, but got " <> arg
+  argInfo = Const "KEY=VALUE"
 
 instance (Ord k, FromArgument k, FromArgument a) => FromArgument (Map.Map k a) where
   fromArgument = fmap Map.fromList . traverse fromArgument . commaSep
+  argInfo = Const "KEY=VALUE[,...]"
 
 -- | `start` is the primary entrypoint of the application, intended to
 -- be called by @main@. It expects a list of command line arguments.

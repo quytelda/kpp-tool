@@ -271,13 +271,13 @@ doubleDecodePatterns :: MonadThrow m => Preset -> m Preset
 doubleDecodePatterns preset@Preset{..}
   | presetVersion == "5.0" = pure preset
   | otherwise = do
-      params <- mapAdjustM decodeParam keyPattern >=>
-                mapAdjustM decodeParam keyPatternMD5 $ presetParams
+      params <- mapAdjustA decodeParam keyPattern >=>
+                mapAdjustA decodeParam keyPatternMD5 $ presetParams
       return preset { presetParams = params }
   where
     decodeParam (Binary bs) = Binary <$> (eitherThrow . Base64.decode) bs
     decodeParam x           = pure x
-    mapAdjustM f = Map.alterF (traverse f)
+    mapAdjustA = Map.alterF . traverse
 
 doubleEncodePatterns :: Preset -> Preset
 doubleEncodePatterns preset@Preset{..}

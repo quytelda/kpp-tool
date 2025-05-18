@@ -13,9 +13,7 @@ This module contains logic related to the command-line interface,
 including argument parsing, runtime configuration, and version/help
 information.
 -}
-module Kpp.App
-  ( start
-  ) where
+module Kpp.App where
 
 import           Conduit
 import           Control.Applicative
@@ -27,6 +25,7 @@ import           Data.Bifunctor
 import           Data.Binary               hiding (get, put)
 import qualified Data.ByteString           as BS
 import qualified Data.ByteString.Lazy      as BL
+import           Data.Either
 import qualified Data.Map.Strict           as Map
 import           Data.Maybe
 import           Data.Text                 (Text)
@@ -131,7 +130,134 @@ instance (Ord k, FromArgument k, FromArgument a) => FromArgument (Map.Map k a) w
   fromArgument = fmap Map.fromList . traverse fromArgument . commaSep
   argInfo = Const "KEY=VALUE[,...]"
 
+-- | Something that can be converted to an `ArgDescr`.
+class ToArgDescr a where
+  toArgDescr :: a -> ArgDescr (StateT Preset IO ())
+
+instance ToArgDescr (StateT Preset IO ()) where
+  toArgDescr s = NoArg s
+
+instance FromArgument a => ToArgDescr (a -> StateT Preset IO ()) where
+  toArgDescr f = ReqArg (fromArgument >=> f) (getConst (argInfo :: Const String a))
+
+--------------------------------------------------------------------------------
+-- CLI Interface
+
+-- We receive a stream of commands from the CLI interface. Each
+-- command has a flag and possibly an argument. Each command executes
+-- a function which takes a preset, performs some action (possibly
+-- with IO), and returns the possibly modified preset.
+--
+-- However, some commands need information besides just the Preset
+-- data structure. For example, --sync-name needs to know the source
+-- file name so it can set the preset name appropriately. This
+-- information should be available in a RunConfig data structure.
+
+-- Each command corresponds uniquely to a set of command line
+-- switches, so therefore it should be possible to derive an OptDescr
+-- from a Command or build an OptDescr with a Command.
+
+-- If a command requires an argument of type `a`, its type should be
+-- `Command a`. If the argument is optional, it should have type
+-- `Command (Maybe a)`. If it takes no argument, the type should be
+-- either `Command ()` or `Command Void` (not sure which yet).
+
+-- However, not all arguments fit into this paradigm. For example, the
+-- --overwrite command shouldn't be executed in a particular order -
+-- it's effects only take place after the full pipeline has completed.
+
+--------------------------------------------------------------------------------
+-- Commands
+
+type Command = StateT Preset IO ()
+
+cmdGetName :: Command
+cmdGetName = gets presetName >>= liftIO . TIO.putStrLn
+
+cmdSetName :: Text -> Command
+cmdSetName = modify . setPresetName
+
+cmdInfo :: Command
+cmdInfo = do
+  preset <- get
+  liftIO $ putDoc (pretty preset)
+  liftIO $ putChar '\n'
+
+cmdGetParam :: Text -> Command
+cmdGetParam key = do
+  preset <- get
+  case lookupParam key preset of
+    Just val -> liftIO $ putDoc (pretty val) *> putChar '\n'
+    Nothing  -> throwM $ RuntimeError $ "no such parameter: " <> T.unpack key
+
+commands :: [OptDescr Command]
+commands = [ Option "n" ["get-name"]
+             (toArgDescr cmdGetName)
+             "Print a preset's metadata name."
+           , Option "N" ["set-name"]
+             (toArgDescr cmdSetName)
+             "Change a preset's metadata name."
+           , Option "i" ["info"]
+             (toArgDescr cmdInfo)
+             "Print a description of a preset."
+           , Option "p" ["get-param"]
+             (toArgDescr cmdGetParam)
+             "Print the value of a single parameter."
+           ]
+
+data Flags = Flags
+  { flagHelp    :: Bool
+  , flagVersion :: Bool
+  } deriving (Eq, Show)
+
+defaultFlags :: Flags
+defaultFlags = Flags
+  { flagHelp    = False
+  , flagVersion = False
+  }
+
+flagOptions :: [OptDescr (Flags -> Flags)]
+flagOptions = [ Option "h" ["help"]
+                (NoArg $ \fs -> fs { flagHelp = True })
+                "Display help and usage information."
+              , Option "v" ["version"]
+                (NoArg $ \fs -> fs { flagVersion = True })
+                "Display version information."
+              ]
+
+data Runtime = Runtime RunConfig [Preset -> IO Preset]
+
+data RunConfig = RunConfig
+  { rcInputFile :: Maybe FilePath
+  , rcFlags     :: Flags
+  , rcCommands  :: [Command]
+  }
+
+-- | Command Line Options
+options :: [OptDescr (Either (Flags -> Flags) Command)]
+options = (fmap Left  <$> flagOptions) <>
+          (fmap Right <$> commands)
+
 -- | `start` is the primary entrypoint of the application, intended to
 -- be called by @main@. It expects a list of command line arguments.
 start :: [String] -> IO ()
-start args = undefined
+start args = do
+  let (flags, positionArgs, errs) = getOpt RequireOrder options args
+      RunConfig{..} = RunConfig
+        { rcInputFile = listToMaybe positionArgs
+        , rcFlags = foldr ($) defaultFlags (lefts flags)
+        , rcCommands = rights flags
+        }
+
+  -- if parsing CLI arguments failed
+  unless (null errs) $ do
+    hPutStr stderr (unlines errs)
+    exitFailure
+
+  when (flagHelp rcFlags) $ do
+    putStrLn $ usageInfo "Usage: kpp-tool [OPTION]... [FILE]" options
+    exitSuccess
+
+  when (flagVersion rcFlags) $ do
+    putStrLn $ "kpp-tool " <> showVersion kppToolVersion
+    exitSuccess

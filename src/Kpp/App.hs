@@ -235,24 +235,28 @@ data RunConfig = RunConfig
 
 -- | Command Line Options
 options :: [OptDescr (Either (Flags -> Flags) Command)]
-options = (fmap Left  <$> flagOptions) <>
-          (fmap Right <$> commands)
+options = (fmap . fmap) Left  flagOptions <>
+          (fmap . fmap) Right commands
+
+parseArgs :: MonadThrow m => [String] -> m RunConfig
+parseArgs args = do
+  let (flags, positionArgs, errs) = getOpt RequireOrder options args
+
+  -- Handle parsing failures.
+  -- Note: Only the first error is actually thrown.
+  mapM_ (throwM . ArgumentError) errs
+
+  return $ RunConfig
+    { rcInputFile = listToMaybe positionArgs
+    , rcFlags     = foldr ($) defaultFlags (lefts flags)
+    , rcCommands  = rights flags
+    }
 
 -- | `start` is the primary entrypoint of the application, intended to
 -- be called by @main@. It expects a list of command line arguments.
 start :: [String] -> IO ()
 start args = do
-  let (flags, positionArgs, errs) = getOpt RequireOrder options args
-      RunConfig{..} = RunConfig
-        { rcInputFile = listToMaybe positionArgs
-        , rcFlags = foldr ($) defaultFlags (lefts flags)
-        , rcCommands = rights flags
-        }
-
-  -- if parsing CLI arguments failed
-  unless (null errs) $ do
-    hPutStr stderr (unlines errs)
-    exitFailure
+  rc@RunConfig{..} <- parseArgs args
 
   when (flagHelp rcFlags) $ do
     putStrLn $ usageInfo "Usage: kpp-tool [OPTION]... [FILE]" options

@@ -261,3 +261,9 @@ start args = do
   when (flagVersion rcFlags) $ do
     putStrLn $ "kpp-tool " <> showVersion kppToolVersion
     exitSuccess
+
+  preset <- runConduitRes $
+    maybe stdinC sourceFile rcInputFile
+    .| pngToPreset
+
+  evalStateT (sequence_ rcCommands) preset

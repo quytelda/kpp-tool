@@ -132,12 +132,12 @@ instance (Ord k, FromArgument k, FromArgument a) => FromArgument (Map.Map k a) w
 
 -- | Something that can be converted to an `ArgDescr`.
 class ToArgDescr a where
-  toArgDescr :: a -> ArgDescr (StateT Preset IO ())
+  toArgDescr :: a -> ArgDescr Command
 
-instance ToArgDescr (StateT Preset IO ()) where
+instance ToArgDescr Command where
   toArgDescr s = NoArg s
 
-instance FromArgument a => ToArgDescr (a -> StateT Preset IO ()) where
+instance FromArgument a => ToArgDescr (a -> Command) where
   toArgDescr f = ReqArg (fromArgument >=> f) (getConst (argInfo :: Const String a))
 
 --------------------------------------------------------------------------------
@@ -169,7 +169,10 @@ instance FromArgument a => ToArgDescr (a -> StateT Preset IO ()) where
 --------------------------------------------------------------------------------
 -- Commands
 
-type Command = StateT Preset IO ()
+type Command = StateT Preset (ReaderT RunConfig IO) ()
+
+runCommand :: Command -> RunConfig -> Preset -> IO ()
+runCommand cmd rc preset = runReaderT (evalStateT cmd preset) rc
 
 cmdGetName :: Command
 cmdGetName = gets presetName >>= liftIO . TIO.putStrLn
@@ -225,8 +228,6 @@ flagOptions = [ Option "h" ["help"]
                 "Display version information."
               ]
 
-data Runtime = Runtime RunConfig [Preset -> IO Preset]
-
 data RunConfig = RunConfig
   { rcInputFile :: Maybe FilePath
   , rcFlags     :: Flags
@@ -270,4 +271,4 @@ start args = do
     maybe stdinC sourceFile rcInputFile
     .| pngToPreset
 
-  evalStateT (sequence_ rcCommands) preset
+  runCommand (sequence_ rcCommands) rc preset

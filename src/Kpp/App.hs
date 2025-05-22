@@ -22,9 +22,6 @@ import           Control.Monad
 import           Control.Monad.Reader
 import           Control.Monad.State
 import           Data.Bifunctor
-import           Data.Binary               hiding (get, put)
-import qualified Data.ByteString           as BS
-import qualified Data.ByteString.Lazy      as BL
 import           Data.Either
 import qualified Data.Map.Strict           as Map
 import           Data.Maybe
@@ -36,8 +33,6 @@ import           Prettyprinter
 import           Prettyprinter.Render.Text
 import           System.Console.GetOpt
 import           System.Exit
-import           System.FilePath
-import           System.IO
 
 import           Kpp.Common
 import           Kpp.Param

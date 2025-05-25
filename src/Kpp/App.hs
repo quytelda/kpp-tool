@@ -169,6 +169,18 @@ type Command = StateT Preset (ReaderT RunConfig IO) ()
 runCommand :: Command -> RunConfig -> Preset -> IO ()
 runCommand cmd rc preset = runReaderT (evalStateT cmd preset) rc
 
+-- | Save a `Resource` to file. An optional output path can be
+-- provided; otherwise, the resource's filename property is used.
+writeResource :: Maybe FilePath -> Resource -> Command
+writeResource mpath resource = do
+  path <- liftIO $ saveResource mpath resource
+
+  -- If no output path was specified, we inform the user where the
+  -- output was written.
+  Flags{..} <- lift $ asks rcFlags
+  unless (flagQuiet || isJust mpath) $
+    liftIO $ putStrLn $ "Wrote resource to: " <> path
+
 cmdGetName :: Command
 cmdGetName = gets presetName >>= liftIO . TIO.putStrLn
 
@@ -188,6 +200,20 @@ cmdGetParam key = do
     Just val -> liftIO $ putDoc (pretty val) *> putChar '\n'
     Nothing  -> throwM $ RuntimeError $ "no such parameter: " <> T.unpack key
 
+cmdExtract :: Map.Map Text Text -> Command
+cmdExtract opts = do
+  let mpath = T.unpack <$> Map.lookup "path" opts
+      lookupResource preset =
+        (Map.lookup "name" opts >>= flip lookupResourceByName preset) <|>
+        (Map.lookup "file" opts >>= flip lookupResourceByFile preset) <|>
+        (Map.lookup "md5"  opts >>= flip lookupResourceByMD5  preset)
+
+  preset <- get
+  case lookupResource preset of
+    Just resource -> writeResource mpath resource
+    Nothing       -> throwM $ RuntimeError $
+      "extract: no matching resource found"
+
 commands :: [OptDescr Command]
 commands = [ Option "n" ["get-name"]
              (toArgDescr cmdGetName)
@@ -206,12 +232,14 @@ commands = [ Option "n" ["get-name"]
 data Flags = Flags
   { flagHelp    :: Bool
   , flagVersion :: Bool
+  , flagQuiet   :: Bool
   } deriving (Eq, Show)
 
 defaultFlags :: Flags
 defaultFlags = Flags
   { flagHelp    = False
   , flagVersion = False
+  , flagQuiet   = False
   }
 
 flagOptions :: [OptDescr (Flags -> Flags)]
@@ -221,6 +249,9 @@ flagOptions = [ Option "h" ["help"]
               , Option "v" ["version"]
                 (NoArg $ \fs -> fs { flagVersion = True })
                 "Display version information."
+              , Option "q" ["quiet"]
+                (NoArg $ \fs -> fs { flagQuiet = True })
+                "Supress unnecessary output."
               ]
 
 data RunConfig = RunConfig

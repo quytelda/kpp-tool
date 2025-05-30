@@ -23,6 +23,7 @@ import           Control.Monad.Reader
 import           Control.Monad.State
 import           Data.Bifunctor
 import           Data.Either
+import           Data.Map.Strict           (Map)
 import qualified Data.Map.Strict           as Map
 import           Data.Maybe
 import           Data.Text                 (Text)
@@ -121,7 +122,7 @@ instance (FromArgument k, FromArgument a) => FromArgument (k, a) where
       "expected KEY=VALUE, but got " <> arg
   argInfo = Const "KEY=VALUE"
 
-instance (Ord k, FromArgument k, FromArgument a) => FromArgument (Map.Map k a) where
+instance (Ord k, FromArgument k, FromArgument a) => FromArgument (Map k a) where
   fromArgument = fmap Map.fromList . traverse fromArgument . commaSep
   argInfo = Const "KEY=VALUE[,...]"
 
@@ -212,7 +213,7 @@ cmdGetParam key = do
 cmdSetParam :: (Text, ParamValue) -> Command
 cmdSetParam = modify' . uncurry insertParam
 
-cmdExtract :: Map.Map Text Text -> Command
+cmdExtract :: Map Text Text -> Command
 cmdExtract opts = do
   let mpath = T.unpack <$> Map.lookup "path" opts
       lookupResource preset =

@@ -187,6 +187,15 @@ cmdGetName = gets presetName >>= liftIO . TIO.putStrLn
 cmdSetName :: Text -> Command
 cmdSetName = modify . setPresetName
 
+cmdOutput :: FilePath -> Command
+cmdOutput path = do
+  preset <- get
+  liftIO $ runConduitRes $ presetToPng preset .| write
+  where
+    write = case path of
+      "-" -> stdoutC
+      _   -> sinkFile path
+
 cmdInfo :: Command
 cmdInfo = do
   preset <- get
@@ -199,6 +208,9 @@ cmdGetParam key = do
   case lookupParam key preset of
     Just val -> liftIO $ putDoc (pretty val) *> putChar '\n'
     Nothing  -> throwM $ RuntimeError $ "no such parameter: " <> T.unpack key
+
+cmdSetParam :: (Text, ParamValue) -> Command
+cmdSetParam = modify' . uncurry insertParam
 
 cmdExtract :: Map.Map Text Text -> Command
 cmdExtract opts = do
@@ -227,6 +239,14 @@ commands = [ Option "n" ["get-name"]
            , Option "p" ["get-param"]
              (toArgDescr cmdGetParam)
              "Print the value of a single parameter."
+           , Option "o" ["output"]
+             (toArgDescr cmdOutput)
+             "Write a preset to file (or '-' for stdout)."
+           , Option "P" ["set-param"]
+             (toArgDescr cmdSetParam)
+             "Set the value of a parameter.\n\
+             \TYPE can be 'string', 'internal', or 'binary'.\n\
+             \For binary parameters, VALUE should be encoded in base-64."
            ]
 
 data Flags = Flags

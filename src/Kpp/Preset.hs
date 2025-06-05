@@ -153,6 +153,7 @@ parseRegularChunks =
   .| chunksToPng
   .| sinkLazy
 
+-- | Decode a binary stream into a 'Preset'.
 pngToPreset :: MonadThrow m => ConduitT ByteString Void m Preset
 pngToPreset = pngToChunks .| do
   (mver, doc, icon) <- getZipSink $ (,,)
@@ -164,6 +165,7 @@ pngToPreset = pngToChunks .| do
   parseXml_Preset version icon (documentRoot doc)
     >>= doubleDecodePatterns
 
+-- | Encode a 'Preset' as a stream of 'ByteString's.
 presetToPng :: MonadThrow m => Preset -> ConduitT i ByteString m ()
 presetToPng preset@Preset{..} = sourceLazy presetIcon .| pngToChunks .|
   (do C.take 2

@@ -12,12 +12,6 @@ rendering, and manipulating brush presets (KPP files).
 -}
 module Kpp.Preset
   ( Preset(..)
-  , parseXml_Preset
-  , renderXml_Preset
-  , pngToPreset
-  , presetToPng
-  , loadPreset
-  , savePreset
   , lookupParam
   , insertParam
   , lookupResourceByName
@@ -27,6 +21,18 @@ module Kpp.Preset
   , setPresetName
   , setPresetIcon
   , presetIconDimensions
+
+    -- * Conduits
+  , pngToPreset
+  , presetToPng
+
+    -- * I/O
+  , loadPreset
+  , savePreset
+
+    -- * XML
+  , parseXml_Preset
+  , renderXml_Preset
   ) where
 
 import           Conduit
@@ -80,6 +86,9 @@ instance Pretty Preset where
         case presetIconDimensions preset of
           Just (width, height) -> pretty width <> "x" <> pretty height
           Nothing              -> "invalid PNG data"
+
+--------------------------------------------------------------------------------
+-- XML
 
 -- | Parse a @<Preset>@ XML element, which should be the root element
 -- of the preset settings document.

@@ -10,27 +10,38 @@ License     : BSD-3-Clause
 Common functionality and utility functions for multiple modules.
 -}
 module Kpp.Common
-  ( encodeBase16
+  ( -- * Error Handling
+    ParseException(..)
+  , eitherThrow
+
+    -- * Encoding
+  , encodeBase16
   , decodeBase16
   , encodeBase64
   , decodeBase64
   , decodeInt
   , md5sum
+
+    -- * Pretty Printing
   , (<\>)
   , (<\\>)
   , prettyByteData
+
+    -- * XML
+  , makeDocument
   , elementToLBS
   , elementFromLBS
   , attributeText
   , contentText
   , childElements
   , withElement
+
+    -- * PNG
   , pngMagicString
   , isPngData
-  , ParseException(..)
-  , eitherThrow
+
+    -- * Other
   , (.==)
-  , makeDocument
   ) where
 
 import           Conduit
@@ -47,6 +58,10 @@ import qualified Data.Text.Read         as Read
 import           Prettyprinter          hiding (width)
 import           Text.XML
 
+--------------------------------------------------------------------------------
+-- Error Handling
+
+-- | Exceptions that might be thrown while parsing preset files.
 data ParseException = ParseException String
   deriving (Eq, Show)
 
@@ -90,9 +105,8 @@ decodeInt t = case Read.decimal t of
 md5sum :: BS.ByteString -> T.Text
 md5sum = encodeBase16 . MD5.hash
 
----------------------
--- Pretty Printing --
----------------------
+--------------------------------------------------------------------------------
+-- Pretty Printing
 
 -- | Separate documents using a line break.
 (<\>) :: Doc ann -> Doc ann -> Doc ann
@@ -118,9 +132,8 @@ prettyByteData bytes
                   then "PNG Image"
                   else "Binary Data"
 
----------
--- XML --
----------
+--------------------------------------------------------------------------------
+-- XML
 
 makeDocument :: Element -> Document
 makeDocument documentRoot =
@@ -162,9 +175,8 @@ withElement name f e@Element{..}
     "expected \"" <> nameLocalName name        <> "\" element, " <>
     "found \""    <> nameLocalName elementName <> "\" element"
 
----------
--- PNG --
----------
+--------------------------------------------------------------------------------
+-- PNG
 
 -- | All PNG image files begin with this signature.
 pngMagicString :: BL.ByteString

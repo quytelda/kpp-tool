@@ -12,20 +12,29 @@ rendering PNG files.
 -}
 module Kpp.Png
   ( PngChunk(..)
+    -- * Binary parsing & rendering
   , getNull
   , putNull
   , expect
+
+    -- ** Chunk parsers
   , getChunk
   , putChunk
+  , isKeywordChunk
+  , isRegularChunk
+
+    -- *** Textual chunks
   , getTextChunk
   , putTextChunk
   , getZtxtChunk
   , putZtxtChunk
   , getItxtChunk
   , putItxtChunk
-  , isKeywordChunk
-  , isRegularChunk
+
+    -- *** Other chunks
   , getIhdrDimensions
+
+    -- * Conduits
   , pngToChunks
   , chunksToPng
   , pngDimensions

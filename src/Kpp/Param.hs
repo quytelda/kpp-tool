@@ -12,8 +12,12 @@ preset parameters.
 -}
 module Kpp.Param
   ( ParamValue(..)
+
+    -- * Pretty printing
   , prettyParam
   , prettyParams
+
+    -- * XML
   , parseXml_param
   , renderXml_param
   , renderXml_params

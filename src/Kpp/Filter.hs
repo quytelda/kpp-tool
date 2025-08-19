@@ -12,7 +12,11 @@ configurations.
 -}
 module Kpp.Filter
   ( FilterConfig(..)
+
+    -- * Pretty printing
   , prettyFilter
+
+    -- * XML
   , parseXml_filterconfig
   , renderXml_filterconfig
   ) where

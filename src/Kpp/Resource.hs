@@ -13,10 +13,14 @@ pattern) which is embedded inside the XML of a preset file.
 -}
 module Kpp.Resource
   ( Resource(..)
-  , prettyResources
   , resourceMD5
   , loadResource
   , saveResource
+
+    -- * Pretty printing
+  , prettyResources
+
+    -- * XML
   , parseXml_resource
   , renderXml_resource
   , parseXml_resources

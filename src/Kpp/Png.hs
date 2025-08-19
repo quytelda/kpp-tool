@@ -35,8 +35,8 @@ module Kpp.Png
   , getIhdrDimensions
 
     -- * Conduits
-  , pngToChunks
-  , chunksToPng
+  , unwrapChunks
+  , wrapChunks
   , pngDimensions
   , parseKeywordChunks
   , renderVersionChunk
@@ -178,8 +178,8 @@ getIhdrDimensions = do
 -- Conduits
 
 -- | Divide a PNG data stream into a stream of unwrapped chunks.
-pngToChunks :: MonadThrow m => ConduitT ByteString PngChunk m ()
-pngToChunks = do
+unwrapChunks :: MonadThrow m => ConduitT ByteString PngChunk m ()
+unwrapChunks = do
   -- Every PNG starts with the same 8-byte magic string.
   magic <- takeCE 8 .| sinkLazy
   unless (magic == pngMagicString) $
@@ -188,8 +188,8 @@ pngToChunks = do
   conduitGet getChunk
 
 -- | Combine a stream of unwrapped chunks into a PNG data stream.
-chunksToPng :: Monad m => ConduitT PngChunk ByteString m ()
-chunksToPng = do
+wrapChunks :: Monad m => ConduitT PngChunk ByteString m ()
+wrapChunks = do
   sourceLazy pngMagicString
 
   C.map putChunk .| conduitPut
@@ -197,7 +197,7 @@ chunksToPng = do
 -- | Query the dimensions of a PNG image.
 pngDimensions :: MonadThrow m => ConduitT ByteString o m (Word32, Word32)
 pngDimensions =
-  pngToChunks
+  unwrapChunks
   .| C.filter (chunkType .== "IHDR")
   .| mapC (BS.toStrict . chunkData) -- TODO: I think this can be better.
   .| sinkGet getIhdrDimensions

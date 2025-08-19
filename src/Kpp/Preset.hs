@@ -159,12 +159,12 @@ parseSettingChunks =
 parseRegularChunks :: MonadThrow m => ConduitT PngChunk Void m BL.ByteString
 parseRegularChunks =
   C.filter isRegularChunk
-  .| chunksToPng
+  .| wrapChunks
   .| sinkLazy
 
 -- | Decode a binary stream into a 'Preset'.
 pngToPreset :: MonadThrow m => ConduitT ByteString Void m Preset
-pngToPreset = pngToChunks .| do
+pngToPreset = unwrapChunks .| do
   (mver, doc, icon) <- getZipSink $ (,,)
     <$> ZipSink parseVersionChunks
     <*> ZipSink parseSettingChunks
@@ -176,7 +176,7 @@ pngToPreset = pngToChunks .| do
 
 -- | Encode a 'Preset' as a stream of 'ByteString's.
 presetToPng :: MonadThrow m => Preset -> ConduitT i ByteString m ()
-presetToPng preset@Preset{..} = sourceLazy presetIcon .| pngToChunks .|
+presetToPng preset@Preset{..} = sourceLazy presetIcon .| unwrapChunks .|
   (do C.take 2
       yield $ renderVersionChunk presetVersion
       yield
@@ -185,7 +185,7 @@ presetToPng preset@Preset{..} = sourceLazy presetIcon .| pngToChunks .|
         $ renderXml_Preset
         $ doubleEncodePatterns preset
       awaitForever yield
-  ) .| chunksToPng
+  ) .| wrapChunks
 
 -- | Read and parse a KPP file.
 loadPreset :: FilePath -> IO Preset
@@ -241,10 +241,10 @@ setPresetIcon :: MonadThrow m => BL.ByteString -> Preset -> m Preset
 setPresetIcon pngData preset = do
   icon <- runConduit
     $ sourceLazy pngData
-    .| pngToChunks
+    .| unwrapChunks
     .| C.filter (isKeywordChunk "version")
     .| C.filter (isKeywordChunk "preset")
-    .| chunksToPng
+    .| wrapChunks
     .| sinkLazy
 
   return preset { presetIcon = icon }

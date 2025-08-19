@@ -87,14 +87,6 @@ test-suite kpp-tool-test
   type: exitcode-stdio-1.0
   main-is: Main.hs
   other-modules:
-      Common
-      Kpp.AppSpec
-      Kpp.CommonSpec
-      Kpp.FilterSpec
-      Kpp.ParamSpec
-      Kpp.PngSpec
-      Kpp.PresetSpec
-      Kpp.ResourceSpec
       Spec
       Paths_kpp_tool
   autogen-modules:

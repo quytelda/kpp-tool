@@ -196,11 +196,12 @@ wrapChunks = do
 
 -- | Query the dimensions of a PNG image.
 pngDimensions :: MonadThrow m => ConduitT ByteString o m (Word32, Word32)
-pngDimensions =
-  unwrapChunks
-  .| C.filter (chunkType .== "IHDR")
-  .| mapC (BS.toStrict . chunkData) -- TODO: I think this can be better.
-  .| sinkGet getIhdrDimensions
+pngDimensions = do
+  unwrapChunks .| C.head >>= \case
+    Just (PngChunk "IHDR" content) ->
+      sourceLazy content
+      .| sinkGet getIhdrDimensions
+    _ -> throwM $ ParseException "expected IDHR chunk"
 
 --------------------------------------------------------------------------------
 -- Chunk Parsers

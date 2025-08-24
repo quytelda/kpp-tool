@@ -13,10 +13,6 @@ rendering PNG files.
 module Kpp.Png
   ( PngChunk(..)
     -- * Binary parsing & rendering
-  , getNull
-  , putNull
-  , expect
-
     -- ** Chunk parsers
   , getChunk
   , putChunk
@@ -65,21 +61,8 @@ import           Kpp.Common
 --------------------------------------------------------------------------------
 -- Binary Parsers and Renderers
 
-getNull :: Get ()
-getNull = label "getNull" $ do
-  w <- getWord8
-  unless (w == 0) $
-    fail $ "expected 0, got " <> show w
-
 putNull :: Put
 putNull = putWord8 0
-
--- | Parse a known string.
-expect :: ByteString -> Get ()
-expect expected = do
-  actual <- getByteString (BS.length expected)
-  unless (actual == expected) $
-    fail $ "expected " <> show expected <> ", got " <> show actual
 
 data PngChunk = PngChunk
   { chunkType :: !ByteString

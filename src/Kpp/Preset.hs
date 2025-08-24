@@ -184,6 +184,7 @@ presetToPng preset@Preset{..} =
            $ renderVersionChunk presetVersion
          yield
            $ renderSettingChunk
+           $ renderLBS def
            $ makeDocument
            $ renderXml_Preset
            $ doubleEncodePatterns preset

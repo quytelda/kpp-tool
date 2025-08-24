@@ -54,7 +54,6 @@ import qualified Data.ByteString.Lazy              as BL
 import qualified Data.Conduit.Combinators          as C
 import           Data.Conduit.Serialization.Binary
 import           Data.Digest.CRC32
-import           Text.XML
 
 import           Kpp.Common
 
@@ -203,13 +202,13 @@ parseChunk chunk@PngChunk{..} =
 renderVersionChunk :: ByteString -> PngChunk
 renderVersionChunk version = PngChunk
   { chunkType = "tEXt"
-  , chunkData = runPut $ putTextChunk "version" (BS.fromStrict version)
+  , chunkData = runPut $ putTextChunk "version" $ BS.fromStrict version
   }
 
-renderSettingChunk :: Document -> PngChunk
-renderSettingChunk doc = PngChunk
+renderSettingChunk :: BL.ByteString -> PngChunk
+renderSettingChunk xml = PngChunk
   { chunkType = "zTXt"
-  , chunkData = runPut $ putZtxtChunk "preset" $ renderLBS def doc
+  , chunkData = runPut $ putZtxtChunk "preset" xml
   }
 
 --------------------------------------------------------------------------------

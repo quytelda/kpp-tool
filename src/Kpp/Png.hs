@@ -20,8 +20,7 @@ module Kpp.Png
     -- ** Chunk parsers
   , getChunk
   , putChunk
-  , isKeywordChunk
-  , isRegularChunk
+  , isSpecialChunk
 
     -- *** Textual chunks
   , getTextChunk
@@ -34,17 +33,21 @@ module Kpp.Png
     -- *** Other chunks
   , getIhdrDimensions
 
+    -- *** KPP-specific chunks
+  , ParsedChunk(..)
+  , parseChunk
+  , renderVersionChunk
+  , renderSettingChunk
+
     -- * Conduits
   , unwrapChunks
   , wrapChunks
   , pngDimensions
-  , parseKeywordChunks
-  , renderVersionChunk
-  , renderSettingChunk
   ) where
 
 import           Codec.Compression.Zlib
 import           Conduit
+import           Control.Applicative
 import           Control.Monad
 import           Data.Binary
 import           Data.Binary.Get
@@ -86,6 +89,17 @@ data PngChunk = PngChunk
 chunkCRC :: PngChunk -> Word32
 chunkCRC PngChunk{..} = crc32Update (crc32 chunkType) chunkData
 
+isSpecialChunk :: PngChunk -> Bool
+isSpecialChunk PngChunk{..} = isTextual && hasSpecialKey
+  where
+    isTextual =
+      chunkType == "tEXt" ||
+      chunkType == "zTXt" ||
+      chunkType == "iTXt"
+    hasSpecialKey =
+      "version\0" `BL.isPrefixOf` chunkData ||
+      "preset\0"  `BL.isPrefixOf` chunkData
+
 -- | Unwrap a PNG chunk. The returned "inner chunk" consists of the
 -- chunk type and chunk data.
 --
@@ -113,10 +127,10 @@ putChunk chunk@PngChunk{..} = do
     chunkCsum   = chunkCRC chunk
 
 -- | Parse a tEXt chunk with a matching key and return its content.
-getTextChunk :: ByteString -> Get BL.ByteString
-getTextChunk key = do
-  expect key *> getNull
-  getRemainingLazyByteString
+getTextChunk :: Get (BL.ByteString, BL.ByteString)
+getTextChunk = (,)
+  <$> getLazyByteStringNul
+  <*> getRemainingLazyByteString
 
 -- | Build a tEXt chunk from a given key and value.
 putTextChunk :: ByteString -> BL.ByteString -> Put
@@ -125,11 +139,11 @@ putTextChunk key value = do
   putLazyByteString value
 
 -- | Parse a zTXt chunk with a matching key and return its decompressed content.
-getZtxtChunk :: ByteString -> Get BL.ByteString
-getZtxtChunk keyword = do
-  expect keyword *> getNull
-  void getWord8 -- compression type is always 0
-  decompress <$> getRemainingLazyByteString
+getZtxtChunk :: Get (BL.ByteString, BL.ByteString)
+getZtxtChunk = (,)
+  <$> getLazyByteStringNul
+  <*  getWord8 -- compression type is always 0
+  <*> (decompress <$> getRemainingLazyByteString)
 
 -- | Build a zTXt chunk from a given key and value.
 putZtxtChunk :: ByteString -> BL.ByteString -> Put
@@ -141,18 +155,18 @@ putZtxtChunk key value = do
 -- | Parse a iTXt chunk with a matching key and return its decompressed content.
 --
 -- The language tag and translated keyword fields are ignored.
-getItxtChunk :: ByteString -> Get BL.ByteString
-getItxtChunk keyword = do
-  expect keyword *> getNull
+getItxtChunk :: Get (BL.ByteString, BL.ByteString)
+getItxtChunk = do
+  key <- getLazyByteStringNul
   compressed <- get :: Get Bool
   void getWord8 -- compression type is always 0
   void getLazyByteStringNul -- ignore language tag
   void getLazyByteStringNul -- ignore translated keyword
   content <- getRemainingLazyByteString
 
-  return $ if compressed
-           then decompress content
-           else content
+  return (key, if compressed
+               then decompress content
+               else content)
 
 -- | Build a (possibly compressed) iTXt chunk from a given key and value.
 putItxtChunk :: Bool -> ByteString -> BL.ByteString -> Put
@@ -173,6 +187,47 @@ getIhdrDimensions = do
   width  <- getWord32be
   height <- getWord32be
   return (width, height)
+
+--------------------------------------------------------------------------------
+-- KPP-specific Chunks
+
+-- | A temporary sum type for the results of parsing a 'PngChunk'.
+data ParsedChunk
+  = VersionChunk BL.ByteString -- ^ Contains KPP version information
+  | SettingChunk BL.ByteString -- ^ Contains preset settings document
+  | IgnoredChunk PngChunk      -- ^ Regular PNG chunks with no KPP-specific purpose
+  deriving (Eq, Show)
+
+-- | Attempt to parse a 'PngChunk' into a special KPP-specific (i.e. a
+-- version or settings chunk). If this fails, we classify the chunk as
+-- ignored.
+parseChunk :: PngChunk -> ParsedChunk
+parseChunk chunk@PngChunk{..} =
+  flip runGet chunkData $ getSpecialChunk <|> pure (IgnoredChunk chunk)
+  where
+    getSpecialChunk = do
+      (key, val) <- case chunkType of
+        "tEXt" -> getTextChunk
+        "zTXt" -> getZtxtChunk
+        "iTXt" -> getItxtChunk
+        _      -> empty
+
+      case key of
+        "version" -> pure $ VersionChunk val
+        "preset"  -> pure $ SettingChunk val
+        _         -> empty
+
+renderVersionChunk :: ByteString -> PngChunk
+renderVersionChunk version = PngChunk
+  { chunkType = "tEXt"
+  , chunkData = runPut $ putTextChunk "version" (BS.fromStrict version)
+  }
+
+renderSettingChunk :: Document -> PngChunk
+renderSettingChunk doc = PngChunk
+  { chunkType = "zTXt"
+  , chunkData = runPut $ putZtxtChunk "preset" $ renderLBS def doc
+  }
 
 --------------------------------------------------------------------------------
 -- Conduits
@@ -202,46 +257,3 @@ pngDimensions = do
       sourceLazy content
       .| sinkGet getIhdrDimensions
     _ -> throwM $ ParseException "expected IDHR chunk"
-
---------------------------------------------------------------------------------
--- Chunk Parsers
-
--- | Test whether this chunk is a textual chunk with a matching
--- keyword.
-isKeywordChunk :: BL.ByteString -> PngChunk -> Bool
-isKeywordChunk key PngChunk{..} = isTextualType && keywordMatches
-  where
-    isTextualType = chunkType == "tEXt" ||
-                    chunkType == "zTXt" ||
-                    chunkType == "iTXt"
-    keywordMatches = (BL.append key "\0") `BL.isPrefixOf` chunkData
-
--- | Determine whether a chunk is a special chunk with KPP settings or
--- a regular PNG chunk that we can ignore.
-isRegularChunk :: PngChunk -> Bool
-isRegularChunk c = not $
-  isKeywordChunk "version" c || isKeywordChunk "preset" c
-
--- | Parse a textual PNG chunk with the given keyword and yields its content.
-parseKeywordChunks :: MonadThrow m => ByteString -> ConduitT PngChunk ByteString m ()
-parseKeywordChunks key = awaitForever $ \PngChunk{..} -> do
-  parser <- case chunkType of
-    "tEXt" -> pure getTextChunk
-    "zTXt" -> pure getZtxtChunk
-    "iTXt" -> pure getItxtChunk
-    _      -> throwM $ ParseException $
-      "expected tEXt, zTXt, or iTXt chunk, but got " <> show chunkType
-
-  sourceLazy chunkData .| conduitGet (parser key) .| awaitForever sourceLazy
-
-renderVersionChunk :: ByteString -> PngChunk
-renderVersionChunk version = PngChunk
-  { chunkType = "tEXt"
-  , chunkData = runPut $ putTextChunk "version" (BS.fromStrict version)
-  }
-
-renderSettingChunk :: Document -> PngChunk
-renderSettingChunk doc = PngChunk
-  { chunkType = "zTXt"
-  , chunkData = runPut $ putZtxtChunk "preset" $ renderLBS def doc
-  }

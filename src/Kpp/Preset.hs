@@ -1,4 +1,5 @@
 {-# LANGUAGE FlexibleContexts  #-}
+{-# LANGUAGE LambdaCase        #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards   #-}
 
@@ -144,48 +145,51 @@ renderXml_Preset Preset{..} =
 --------------------------------------------------------------------------------
 -- Conduits
 
-parseVersionChunks :: MonadThrow m => ConduitT PngChunk Void m (Maybe ByteString)
-parseVersionChunks =
-  C.filter (isKeywordChunk "version")
-  .| parseKeywordChunks "version"
-  .| C.head
-
-parseSettingChunks :: MonadThrow m => ConduitT PngChunk Void m Document
-parseSettingChunks =
-  C.filter (isKeywordChunk "preset")
-  .| parseKeywordChunks "preset"
-  .| sinkDoc def
-
-parseRegularChunks :: MonadThrow m => ConduitT PngChunk Void m BL.ByteString
-parseRegularChunks =
-  C.filter isRegularChunk
-  .| wrapChunks
-  .| sinkLazy
-
--- | Decode a binary stream into a 'Preset'.
-pngToPreset :: MonadThrow m => ConduitT ByteString Void m Preset
-pngToPreset = unwrapChunks .| do
-  (mver, doc, icon) <- getZipSink $ (,,)
-    <$> ZipSink parseVersionChunks
-    <*> ZipSink parseSettingChunks
-    <*> ZipSink parseRegularChunks
-  version <- maybe (throwM $ ParseException "missing version chunk") pure mver
+sinkPreset
+  :: MonadThrow m
+  => ConduitT ParsedChunk Void m Preset
+sinkPreset = do
+  (version, doc, icon) <- getZipSink $ (,,)
+    <$> ZipSink (selectVersion .| headOrFail "missing version chunk")
+    <*> ZipSink (selectSetting .| sinkDoc def)
+    <*> ZipSink (selectIgnored .| wrapChunks .| sinkLazy)
 
   parseXml_Preset version icon (documentRoot doc)
     >>= doubleDecodePatterns
+  where
+    selectVersion = awaitForever $ \case
+      VersionChunk bs -> yield $ BS.toStrict bs
+      _               -> pure ()
+    selectSetting = awaitForever $ \case
+      SettingChunk bs -> sourceLazy bs
+      _               -> pure ()
+    selectIgnored = awaitForever $ \case
+      IgnoredChunk chunk -> yield chunk
+      _                  -> pure ()
+    headOrFail msg = C.head >>= \case
+      Just v -> return v
+      _      -> throwM $ ParseException msg
+
+-- | Decode a binary stream into a 'Preset'.
+pngToPreset :: MonadThrow m => ConduitT ByteString Void m Preset
+pngToPreset = unwrapChunks .| C.map parseChunk .| sinkPreset
 
 -- | Encode a 'Preset' as a stream of 'ByteString's.
 presetToPng :: MonadThrow m => Preset -> ConduitT i ByteString m ()
-presetToPng preset@Preset{..} = sourceLazy presetIcon .| unwrapChunks .|
-  (do C.take 2
-      yield $ renderVersionChunk presetVersion
-      yield
-        $ renderSettingChunk
-        $ makeDocument
-        $ renderXml_Preset
-        $ doubleEncodePatterns preset
-      awaitForever yield
-  ) .| wrapChunks
+presetToPng preset@Preset{..} =
+  sourceLazy presetIcon
+  .| unwrapChunks
+  .| (do C.take 2
+         yield
+           $ renderVersionChunk presetVersion
+         yield
+           $ renderSettingChunk
+           $ makeDocument
+           $ renderXml_Preset
+           $ doubleEncodePatterns preset
+         awaitForever yield
+     )
+  .| wrapChunks
 
 -- | Read and parse a KPP file.
 loadPreset :: FilePath -> IO Preset
@@ -242,8 +246,7 @@ setPresetIcon pngData preset = do
   icon <- runConduit
     $ sourceLazy pngData
     .| unwrapChunks
-    .| C.filter (isKeywordChunk "version")
-    .| C.filter (isKeywordChunk "preset")
+    .| C.filter (not . isSpecialChunk)
     .| wrapChunks
     .| sinkLazy
 

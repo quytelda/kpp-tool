@@ -87,6 +87,7 @@ test-suite kpp-tool-test
   type: exitcode-stdio-1.0
   main-is: Main.hs
   other-modules:
+      Kpp.PngSpec
       Spec
       Paths_kpp_tool
   autogen-modules:

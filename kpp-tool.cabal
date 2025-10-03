@@ -88,6 +88,7 @@ test-suite kpp-tool-test
   main-is: Main.hs
   other-modules:
       Kpp.PngSpec
+      Kpp.PresetSpec
       Spec
       Paths_kpp_tool
   autogen-modules:

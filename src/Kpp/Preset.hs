@@ -122,7 +122,7 @@ parseXml_Preset presetVersion presetIcon = withElement "Preset" $ \e -> do
     Just val -> do
       resourceCount <- decodeInt val
       unless (resourceCount == Map.size embeddedResources) $
-        throwM $ ParseException $ "resource count mismatch"
+        throwM $ ParseException "resource count mismatch"
     Nothing -> pure ()
 
   return Preset{..}

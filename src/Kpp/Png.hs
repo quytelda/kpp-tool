@@ -16,7 +16,6 @@ module Kpp.Png
     -- ** Chunk parsers
   , getChunk
   , putChunk
-  , isSpecialChunk
 
     -- *** Textual chunks
   , getTextChunk
@@ -30,6 +29,7 @@ module Kpp.Png
   , getIhdrDimensions
 
     -- *** KPP-specific chunks
+  , isSpecialChunk
   , ParsedChunk(..)
   , parseChunk
   , renderVersionChunk

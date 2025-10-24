@@ -68,7 +68,12 @@ resourceMD5 :: Resource -> T.Text
 resourceMD5 = md5sum . resourceData
 
 -- | Load a resource file.
-loadResource :: FilePath -> T.Text -> Maybe T.Text -> Maybe T.Text -> IO Resource
+loadResource
+  :: FilePath -- ^ Path to resource file
+  -> T.Text   -- ^ Resource type
+  -> Maybe T.Text -- ^ Resource name
+  -> Maybe T.Text -- ^ Resource filename (metadata)
+  -> IO Resource
 loadResource path resourceType mname mfile = do
   let resourceFile = fromMaybe (T.pack $ takeFileName path) mfile
       resourceName = fromMaybe (T.pack $ takeFileName path) mname

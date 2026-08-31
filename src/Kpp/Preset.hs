@@ -24,6 +24,7 @@ module Kpp.Preset
   , presetIconDimensions
 
     -- * Conduits
+  , extractSettings
   , pngToPreset
   , presetToPng
 
@@ -144,6 +145,13 @@ renderXml_Preset Preset{..} =
 
 --------------------------------------------------------------------------------
 -- Conduits
+
+-- | Extract the raw setting data from a KPP file. This stream expects
+-- the contents of a KPP file as input, and outputs the settings data.
+extractSettings
+  :: MonadThrow m
+  => ConduitT ByteString ByteString m ()
+extractSettings = unwrapChunks .| C.map parseChunk .| selectSettings
 
 sinkPreset
   :: MonadThrow m

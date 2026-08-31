@@ -150,25 +150,12 @@ sinkPreset
   => ConduitT ParsedChunk Void m Preset
 sinkPreset = do
   (version, doc, icon) <- getZipSink $ (,,)
-    <$> ZipSink (selectVersion .| headOrFail "missing version chunk")
-    <*> ZipSink (selectSetting .| sinkDoc def)
-    <*> ZipSink (selectIgnored .| wrapChunks .| sinkLazy)
+    <$> ZipSink (selectVersion  .| sinkLazy)
+    <*> ZipSink (selectSettings .| sinkDoc def)
+    <*> ZipSink (selectIgnored  .| wrapChunks .| sinkLazy)
 
-  parseXml_Preset version icon (documentRoot doc)
+  parseXml_Preset (BS.toStrict version) icon (documentRoot doc)
     >>= doubleDecodePatterns
-  where
-    selectVersion = awaitForever $ \case
-      VersionChunk bs -> yield $ BS.toStrict bs
-      _               -> pure ()
-    selectSetting = awaitForever $ \case
-      SettingChunk bs -> sourceLazy bs
-      _               -> pure ()
-    selectIgnored = awaitForever $ \case
-      IgnoredChunk chunk -> yield chunk
-      _                  -> pure ()
-    headOrFail msg = C.head >>= \case
-      Just v -> return v
-      _      -> throwM $ ParseException msg
 
 -- | Decode a binary stream into a 'Preset'.
 pngToPreset :: MonadThrow m => ConduitT ByteString Void m Preset

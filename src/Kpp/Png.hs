@@ -32,6 +32,9 @@ module Kpp.Png
   , isSpecialChunk
   , ParsedChunk(..)
   , parseChunk
+  , selectVersion
+  , selectSettings
+  , selectIgnored
   , renderVersionChunk
   , renderSettingChunk
 
@@ -230,6 +233,31 @@ wrapChunks = do
   sourceLazy pngMagicString
 
   C.map putChunk .| conduitPut
+
+-- | Extract KPP settings data from a stream of 'ParsedChunks'.
+selectSettings
+  :: Monad m
+  => ConduitT ParsedChunk ByteString m ()
+selectSettings = awaitForever $ \case
+  SettingChunk bs -> sourceLazy bs
+  _               -> pure ()
+
+-- | Extract KPP version data from a stream of 'ParsedChunks'.
+selectVersion
+  :: Monad m
+  => ConduitT ParsedChunk ByteString m ()
+selectVersion = awaitForever $ \case
+  VersionChunk bs -> sourceLazy bs
+  _               -> pure ()
+
+-- | Convert a stream of 'ParsedChunk's into a stream of regular
+-- 'PngChunk's by filtering out KPP-specific chunks.
+selectIgnored
+  :: Monad m
+  => ConduitT ParsedChunk PngChunk m ()
+selectIgnored = awaitForever $ \case
+  IgnoredChunk chunk -> yield chunk
+  _                  -> pure ()
 
 -- | Query the dimensions of a PNG image.
 pngDimensions :: MonadThrow m => ConduitT ByteString o m (Word32, Word32)

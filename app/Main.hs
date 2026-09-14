@@ -2,9 +2,15 @@
 {-# LANGUAGE RecordWildCards   #-}
 module Main (main) where
 
-import System.Environment
+import           Mangrove
 
-import Kpp.App
+import           Kpp.App
 
 main :: IO ()
-main = getArgs >>= start
+main = parseArguments programInfo parseSettings run
+  where
+    programInfo = ProgramInfo
+      { programName = "kpp-tool"
+      , programDesc = "A utility for interacting with Krita brush presets from the command line"
+      , programVersion = kppToolVersion
+      }

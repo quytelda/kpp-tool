@@ -1,7 +1,11 @@
 {-# LANGUAGE FlexibleInstances   #-}
+{-# LANGUAGE LambdaCase          #-}
+{-# LANGUAGE OverloadedLists     #-}
 {-# LANGUAGE OverloadedStrings   #-}
 {-# LANGUAGE RecordWildCards     #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TypeApplications    #-}
+{-# LANGUAGE ViewPatterns        #-}
 
 {-|
 Module      : Kpp.App
@@ -17,25 +21,25 @@ module Kpp.App where
 
 import           Conduit
 import           Control.Applicative
-import           Control.Exception
 import           Control.Monad
 import           Control.Monad.Reader
 import           Control.Monad.State
 import           Data.Bifunctor
-import           Data.Either
-import           Data.Map.Strict           (Map)
-import qualified Data.Map.Strict           as Map
+import qualified Data.ByteString.Base64    as Base64
+import qualified Data.ByteString.Lazy      as BL
 import           Data.Maybe
 import           Data.Text                 (Text)
 import qualified Data.Text                 as T
+import           Data.Text.Encoding        (encodeUtf8)
 import qualified Data.Text.IO              as TIO
 import           Data.Version
+import           Mangrove
+import qualified Mangrove.TextParser       as TP
+import           Mangrove.Unix
 import           Prettyprinter
 import           Prettyprinter.Render.Text
-import           System.Console.GetOpt
-import           System.Exit
+import           System.FilePath
 
-import           Kpp.Common
 import           Kpp.Param
 import           Kpp.Preset
 import           Kpp.Resource
@@ -47,275 +51,281 @@ import qualified Paths_kpp_tool
 kppToolVersion :: Version
 kppToolVersion = Paths_kpp_tool.version
 
---------------------------------------------------------------------------------
--- Argument Parsing
+-- | A resource specifier that points to a particular resource by
+-- name, filename, or MD5 checksum.
+data ResourceSpec
+  = RSName !Text
+  | RSFile !Text
+  | RSCsum !Text
+  deriving (Show)
 
--- | A type for argument parsing errors.
-data RuntimeError = RuntimeError String
-                  | ArgumentError String
-  deriving (Eq, Show)
+-- | An operation that can be performed with a preset.
+data Action
+  = Output FilePath
+  | Info
+  | GetName
+  | SetName Text
+  | SyncName
+  | ListParams
+  | GetParam Text
+  | SetParam Text ParamValue
+  | ListResources
+  | Extract ResourceSpec (Maybe FilePath)
+  | ExtractAll (Maybe FilePath)
+  | Embed FilePath Text (Maybe Text) (Maybe Text)
+  | GetIcon FilePath
+  | SetIcon FilePath
+  deriving (Show)
 
-instance Exception RuntimeError
+-- | Break a string around the first occurence of some character. If
+-- the string contains the character, the result is a tuple containing
+-- everything before and everything after that character. If the
+-- character does not occur in the string, the result is 'Nothing'.
+breakOnChar :: Char -> Text -> Maybe (Text, Text)
+breakOnChar c text =
+  case T.break (== c) text of
+    (pre, T.uncons -> Just (_, post)) -> Just (pre, post)
+    _                                 -> Nothing
 
--- | Try to break a list at the first occurence of some delimiter,
--- dropping the delimiter from the result. If no delimiter is found,
--- Nothing is returned.
-breakOn :: Eq a => a -> [a] -> Maybe ([a], [a])
-breakOn c = go []
+-- | Parse a 'SetParam' action from a parameter a string in the form
+-- @KEY=TYPE:VALUE@.
+parseSetParam :: ParseTree SubScheme Action
+parseSetParam = subparameter TextParser
+  { parserHint = "KEY=TYPE:VALUE"
+  , parserRun = \text ->
+      case breakOnChar '=' text of
+        Just (key, val) ->
+          case breakOnChar ':' val of
+            Just ("notype", value) -> Right $ SetParam key $ Unknown value
+            Just ("string", value) -> Right $ SetParam key $ String value
+            Just ("internal", value) -> Right $ SetParam key $ Internal value
+            Just ("binary", value) ->
+              bimap T.pack (SetParam key . Binary)
+              $ Base64.decode
+              $ encodeUtf8 value
+            _ -> Left "invalid type specifier"
+        _ -> Left "expected \"KEY=\""
+  }
+
+-- | Parse an 'Extract' action.
+parseExtract :: ParseTree SubScheme Action
+parseExtract = Extract
+  <$> parseResourceSpec
+  <*> optional subopt_dest
   where
-    go xs (y:ys) | c /= y    = go (y:xs) ys
-                 | otherwise = Just (reverse xs, ys)
-    go _ _                   = Nothing
+    parseResourceSpec =
+      suboption "name" (RSName <$> defaultParser) <|>
+      suboption "file" (RSFile <$> defaultParser) <|>
+      suboption "md5"  (RSCsum <$> defaultParser)
+    subopt_dest =
+      suboption "dest" TP.parseFilePath
 
--- | Split a `Prelude.String` on the first comma which is not escaped
--- with backslash.
-splitOnComma :: String -> (String, String)
-splitOnComma []              = ([], [])
-splitOnComma (',' : cs)      = ([], cs)
-splitOnComma ('\\' : c : cs) = first (c :) $ splitOnComma cs
-splitOnComma (c : cs)        = first (c :) $ splitOnComma cs
+-- | Parse an 'Embed' action.
+parseEmbed :: ParseTree SubScheme Action
+parseEmbed = Embed
+  <$> suboption "path" defaultParser
+  <*> suboption "type" defaultParser
+  <*> optional (suboption "name" defaultParser)
+  <*> optional (suboption "file" defaultParser)
 
-commaSep :: String -> [String]
-commaSep [] = []
-commaSep xs = uncurry (:) . second commaSep . splitOnComma $ xs
+-- | A 'TextParser' for file paths.
+pathParser :: TextParser FilePath
+pathParser = defaultParser {parserHint="PATH"}
 
--- | FromArgument is a class for types that can be parsed from a
--- `Prelude.String` argument to a CLI option, e.g.
--- @--some-flag=ARGUMENT@.
-class FromArgument a where
-  fromArgument :: MonadThrow m => String -> m a
+-- | Parse an option corresponding to any 'Action'.
+parseAction :: ParseTree UnixScheme Action
+parseAction = asum @[]
+  [ option [LongFlag "output", ShortFlag 'o']
+    "Write preset data to file (\"-\" for stdout)"
+    $ fmap Output
+    $ subparameter pathParser
+  , option [LongFlag "info", ShortFlag 'i']
+    "Print a summary of preset settings"
+    $ pure Info
+  , option [LongFlag "get-name", ShortFlag 'n']
+    "Print preset name"
+    $ pure GetName
+  , option [LongFlag "set-name", ShortFlag 'N']
+    "Change preset name"
+    $ fmap SetName
+    $ subparameter defaultParser
+  , option [LongFlag "sync-name", ShortFlag 'S']
+    "Synchronize preset name with the filename"
+    $ pure SyncName
+  , option [LongFlag "list-params", ShortFlag 'l']
+    "Print a table of parameters and their values"
+    $ pure ListParams
+  , option [LongFlag "get-param", ShortFlag 'p']
+    "Look up the value of a parameter"
+    $ fmap GetParam
+    $ subparameter defaultParser {parserHint="KEY"}
+  , option [LongFlag "set-param", ShortFlag 'P']
+    "Set the value of a parameter"
+    $ parseSetParam
+  , option [LongFlag "list-resources", ShortFlag 'r']
+    "List embedded resources"
+    $ pure ListResources
+  , option [LongFlag "extract", ShortFlag 'x']
+    "Extract an embedded resources"
+    $ parseExtract
+  , option [LongFlag "extract-all", ShortFlag 'X']
+    "Extract all embedded resources"
+    $ fmap ExtractAll
+    $ optional $ subparameter defaultParser {parserHint = "DIR"}
+  , option [LongFlag "embed", ShortFlag 'e']
+    "Insert or replace an embedded resource"
+    $ parseEmbed
+  , option [LongFlag "get-icon", ShortFlag 'c']
+    "Extract the preset icon image"
+    $ fmap GetIcon
+    $ subparameter pathParser
+  , option [LongFlag "set-icon", ShortFlag 'C']
+    "Replace the preset icon image"
+    $ fmap SetIcon
+    $ subparameter pathParser
+  ]
 
-  -- | This is a type hint to be displayed in help output and error
-  -- messages. The default is @"VALUE"@.
-  --
-  -- The `String` is wrapped in a `Const` functor here so we can use a
-  -- phantom type to select the correct instance without providing an
-  -- actual value (using ScopedTypeVariables).
-  argInfo :: Const String a
-  argInfo = Const "VALUE"
+-- | Settings for normal program operations.
+data RunSettings = RunSettings
+  { rsQuiet     :: Bool
+  , rsActions   :: [Action]
+  , rsInputFile :: Maybe FilePath
+  } deriving (Show)
 
-fromArgumentOptional :: (FromArgument a, MonadThrow m) => Maybe String -> m (Maybe a)
-fromArgumentOptional = traverse fromArgument
+parseRunSettings :: ParseTree UnixScheme RunSettings
+parseRunSettings = RunSettings
+  <$> opt_quiet
+  <*> some parseAction
+  <*> prm_presetFile
+  where
+    opt_quiet =
+      switch ["--quiet", "-q"]
+      "Supress unnecessary output"
 
-instance FromArgument String where
-  fromArgument = pure
-  argInfo = Const "STRING"
+parsePathLike :: TextParser (Maybe FilePath)
+parsePathLike = TextParser
+  { parserHint = "PRESET_FILE"
+  , parserRun = \case
+      "-"  -> pure Nothing
+      path -> pure $ Just $ T.unpack path
+  }
 
-instance FromArgument Text where
-  fromArgument = pure . T.pack
-  argInfo = Const "STRING"
+prm_presetFile :: UnixParser (Maybe FilePath)
+prm_presetFile = parameter parsePathLike
 
-instance FromArgument ParamValue where
-  fromArgument arg = case breakOn ':' arg of
-    Just ("untyped",  val) -> Unknown  <$> pure (T.pack val)
-    Just ("string",   val) -> String   <$> pure (T.pack val)
-    Just ("internal", val) -> Internal <$> pure (T.pack val)
-    Just ("binary",   val) -> Binary   <$> decodeBase64 (T.pack val)
-    _                      -> throwM $ ArgumentError $
-      "expected TYPE:VALUE, but got " <> show arg
-  argInfo = Const "TYPE:VALUE"
+-- | Settings for one of several possible runtime modes.
+data Settings
+  = DumpXmlMode (Maybe FilePath) (Maybe FilePath)
+  | RunMode RunSettings
+  deriving (Show)
 
-instance (FromArgument k, FromArgument a) => FromArgument (k, a) where
-  fromArgument arg = case breakOn '=' arg of
-    Just (key, val) -> (,) <$> fromArgument key <*> fromArgument val
-    Nothing         -> throwM $ ArgumentError $
-      "expected KEY=VALUE, but got " <> arg
-  argInfo = Const "KEY=VALUE"
-
-instance (Ord k, FromArgument k, FromArgument a) => FromArgument (Map k a) where
-  fromArgument = fmap Map.fromList . traverse fromArgument . commaSep
-  argInfo = Const "KEY=VALUE[,...]"
-
--- | Something that can be converted to an `ArgDescr`.
-class ToArgDescr a where
-  toArgDescr :: a -> ArgDescr Command
-
-instance ToArgDescr Command where
-  toArgDescr s = NoArg s
-
-instance FromArgument a => ToArgDescr (a -> Command) where
-  toArgDescr f = ReqArg (fromArgument >=> f) (getConst (argInfo :: Const String a))
+-- | Parse all program settings
+parseSettings :: ParseTree UnixScheme Settings
+parseSettings = withHelp
+  $ opt_version
+  <|> cmd_dumpXml
+  <|> RunMode <$> parseRunSettings
+  where
+    withHelp =
+      addHelpOptions [LongFlag "help", ShortFlag 'h']
+      "Display help and usage information"
+    opt_version =
+      requestOption [LongFlag "version", ShortFlag 'v']
+      "Display version information"
+      versionRequest
+    prm_outputFile = parameter parsePathLike { parserHint = "OUTPUT_FILE" }
+    cmd_dumpXml =
+      command ["dump-xml"]
+      "Dump a preset's XML settings to standard output"
+      $ DumpXmlMode <$> (prm_presetFile <|> pure Nothing)
+                    <*> (prm_outputFile <|> pure Nothing)
 
 --------------------------------------------------------------------------------
--- CLI Interface
+-- Program Logic
 
--- We receive a stream of commands from the CLI interface. Each
--- command has a flag and possibly an argument. Each command executes
--- a function which takes a preset, performs some action (possibly
--- with IO), and returns the possibly modified preset.
---
--- However, some commands need information besides just the Preset
--- data structure. For example, --sync-name needs to know the source
--- file name so it can set the preset name appropriately. This
--- information should be available in a RunConfig data structure.
+lookupResource :: ResourceSpec -> Preset -> Maybe Resource
+lookupResource (RSName name) = lookupResourceByName name
+lookupResource (RSFile file) = lookupResourceByFile file
+lookupResource (RSCsum csum) = lookupResourceByMD5 csum
 
--- Each command corresponds uniquely to a set of command line
--- switches, so therefore it should be possible to derive an OptDescr
--- from a Command or build an OptDescr with a Command.
-
--- If a command requires an argument of type `a`, its type should be
--- `Command a`. If the argument is optional, it should have type
--- `Command (Maybe a)`. If it takes no argument, the type should be
--- either `Command ()` or `Command Void` (not sure which yet).
-
--- However, not all arguments fit into this paradigm. For example, the
--- --overwrite command shouldn't be executed in a particular order -
--- it's effects only take place after the full pipeline has completed.
-
---------------------------------------------------------------------------------
--- Commands
-
-type Command = StateT Preset (ReaderT RunConfig IO) ()
-
-runCommand :: Command -> RunConfig -> Preset -> IO ()
-runCommand cmd rc preset = runReaderT (evalStateT cmd preset) rc
-
--- | Save a `Resource` to file. An optional output path can be
--- provided; otherwise, the resource's filename property is used.
-writeResource :: Maybe FilePath -> Resource -> Command
+writeResource :: Maybe FilePath -> Resource -> ActionM ()
 writeResource mpath resource = do
   path <- liftIO $ saveResource mpath resource
 
   -- If no output path was specified, we inform the user where the
   -- output was written.
-  Flags{..} <- lift $ asks rcFlags
-  unless (flagQuiet || isJust mpath) $
+  quiet <- asks rsQuiet
+  unless (quiet || isJust mpath) $
     liftIO $ putStrLn $ "Wrote resource to: " <> path
 
-cmdGetName :: Command
-cmdGetName = gets presetName >>= liftIO . TIO.putStrLn
+type ActionM = ReaderT RunSettings (StateT Preset IO)
 
-cmdSetName :: Text -> Command
-cmdSetName = modify . setPresetName
+runActionM :: ActionM a -> RunSettings -> Preset -> IO Preset
+runActionM ma = execStateT . runReaderT ma
 
-cmdOutput :: FilePath -> Command
-cmdOutput path = do
+runAction :: Action -> ActionM ()
+runAction (Output path) = do
   preset <- get
   liftIO $ runConduitRes $ presetToPng preset .| write
   where
     write = case path of
       "-" -> stdoutC
       _   -> sinkFile path
-
-cmdInfo :: Command
-cmdInfo = do
+runAction Info = do
   preset <- get
-  liftIO $ putDoc (pretty preset)
-  liftIO $ putChar '\n'
-
-cmdGetParam :: Text -> Command
-cmdGetParam key = do
+  liftIO $ putDoc (pretty preset) *> putChar '\n'
+runAction GetName =
+  get >>= liftIO . TIO.putStrLn . presetName
+runAction (SetName name) =
+  modify' (setPresetName name)
+runAction SyncName = do
+  mInputPath <- asks rsInputFile
+  case mInputPath of
+    Just path -> modify' $ setPresetName $ T.pack $ takeBaseName path
+    Nothing   -> fail "--sync-name requires an input path"
+runAction ListParams = do
+  Preset{..} <- get
+  liftIO $ putDoc (prettyParams presetParams) *> putChar '\n'
+runAction (SetParam key value) =
+  modify' (insertParam key value)
+runAction (GetParam key) = do
   preset <- get
   case lookupParam key preset of
-    Just val -> liftIO $ putDoc (pretty val) *> putChar '\n'
-    Nothing  -> throwM $ RuntimeError $ "no such parameter: " <> T.unpack key
-
-cmdSetParam :: (Text, ParamValue) -> Command
-cmdSetParam = modify' . uncurry insertParam
-
-cmdExtract :: Map Text Text -> Command
-cmdExtract opts = do
-  let mpath = T.unpack <$> Map.lookup "path" opts
-      lookupResource preset =
-        (Map.lookup "name" opts >>= flip lookupResourceByName preset) <|>
-        (Map.lookup "file" opts >>= flip lookupResourceByFile preset) <|>
-        (Map.lookup "md5"  opts >>= flip lookupResourceByMD5  preset)
-
+    Just value -> liftIO $ putDoc (pretty value) *> putChar '\n'
+    Nothing    -> fail $ "no such parameter: " <> T.unpack key
+runAction ListResources = do
+  Preset{..} <- get
+  liftIO $ putDoc (prettyResources embeddedResources) *> putChar '\n'
+runAction (Extract spec mpath) = do
   preset <- get
-  case lookupResource preset of
+  case lookupResource spec preset of
     Just resource -> writeResource mpath resource
-    Nothing       -> throwM $ RuntimeError $
-      "extract: no matching resource found"
+    Nothing       -> fail "extract: no matching resource found"
+runAction (ExtractAll mdir) = do
+  resources <- gets embeddedResources
+  forM_ resources $ \resource ->
+    writeResource (makePath resource <$> mdir) resource
+  where
+    makePath Resource{..} dir = dir </> takeFileName (T.unpack resourceFile)
+runAction (Embed rPath rType mName mFile) = do
+  resource <- liftIO $ loadResource rPath rType mName mFile
+  modify' (insertResource resource)
+runAction (GetIcon path) = do
+  gets presetIcon >>= liftIO . BL.writeFile path
+runAction (SetIcon path) = do
+  icon <- liftIO $ BL.readFile path
+  get >>= setPresetIcon icon >>= put
 
-commands :: [OptDescr Command]
-commands = [ Option "n" ["get-name"]
-             (toArgDescr cmdGetName)
-             "Print a preset's metadata name."
-           , Option "N" ["set-name"]
-             (toArgDescr cmdSetName)
-             "Change a preset's metadata name."
-           , Option "i" ["info"]
-             (toArgDescr cmdInfo)
-             "Print a description of a preset."
-           , Option "p" ["get-param"]
-             (toArgDescr cmdGetParam)
-             "Print the value of a single parameter."
-           , Option "o" ["output"]
-             (toArgDescr cmdOutput)
-             "Write a preset to file (or '-' for stdout)."
-           , Option "P" ["set-param"]
-             (toArgDescr cmdSetParam)
-             "Set the value of a parameter.\n\
-             \TYPE can be 'string', 'internal', or 'binary'.\n\
-             \For binary parameters, VALUE should be encoded in base-64."
-           ]
-
-data Flags = Flags
-  { flagHelp    :: Bool
-  , flagVersion :: Bool
-  , flagQuiet   :: Bool
-  } deriving (Eq, Show)
-
-defaultFlags :: Flags
-defaultFlags = Flags
-  { flagHelp    = False
-  , flagVersion = False
-  , flagQuiet   = False
-  }
-
-flagOptions :: [OptDescr (Flags -> Flags)]
-flagOptions = [ Option "h" ["help"]
-                (NoArg $ \fs -> fs { flagHelp = True })
-                "Display help and usage information."
-              , Option "v" ["version"]
-                (NoArg $ \fs -> fs { flagVersion = True })
-                "Display version information."
-              , Option "q" ["quiet"]
-                (NoArg $ \fs -> fs { flagQuiet = True })
-                "Supress unnecessary output."
-              ]
-
-data RunConfig = RunConfig
-  { rcInputFile :: Maybe FilePath
-  , rcFlags     :: Flags
-  , rcCommands  :: [Command]
-  }
-
--- | Command Line Options
-options :: [OptDescr (Either (Flags -> Flags) Command)]
-options = (fmap . fmap) Left  flagOptions <>
-          (fmap . fmap) Right commands
-
-parseArgs :: MonadThrow m => [String] -> m RunConfig
-parseArgs args = do
-  let (flags, positionArgs, errs) = getOpt RequireOrder options args
-
-  -- Handle parsing failures.
-  -- Note: Only the first error is actually thrown.
-  mapM_ (throwM . ArgumentError) errs
-
-  return $ RunConfig
-    { rcInputFile = listToMaybe positionArgs
-    , rcFlags     = foldr ($) defaultFlags (lefts flags)
-    , rcCommands  = rights flags
-    }
-
--- | `start` is the primary entrypoint of the application, intended to
--- be called by @main@. It expects a list of command line arguments.
-start :: [String] -> IO ()
-start args = do
-  rc@RunConfig{..} <- parseArgs args
-
-  when (flagHelp rcFlags) $ do
-    putStrLn $ usageInfo "Usage: kpp-tool [OPTION]... [FILE]" options
-    exitSuccess
-
-  when (flagVersion rcFlags) $ do
-    putStrLn $ "kpp-tool " <> showVersion kppToolVersion
-    exitSuccess
-
-  preset <- runConduitRes $
-    maybe stdinC sourceFile rcInputFile
-    .| pngToPreset
-
-  runCommand (sequence_ rcCommands) rc preset
+run :: Settings -> IO ()
+run settings = do
+  case settings of
+    DumpXmlMode mInPath mOutPath ->
+      let src = maybe stdinC sourceFile mInPath
+          dst = maybe stdoutC sinkFile mOutPath
+      in runConduitRes $ src .| extractSettings .| dst
+    RunMode rs@RunSettings{..} -> do
+      let pipeline = mapM_ runAction rsActions
+      preset <- runConduitRes
+        $ maybe stdinC sourceFile rsInputFile
+        .| pngToPreset
+      void $ runActionM pipeline rs preset

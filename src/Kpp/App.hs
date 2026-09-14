@@ -10,14 +10,26 @@
 {-|
 Module      : Kpp.App
 Description : Application Logic
-Copyright   : (c) Quytelda Kahja, 2024
+Copyright   : (c) Quytelda Kahja, 2026
 License     : BSD-3-Clause
 
 This module contains logic related to the command-line interface,
 including argument parsing, runtime configuration, and version/help
 information.
 -}
-module Kpp.App where
+module Kpp.App
+  ( -- * Entrypoint
+    run
+
+    -- * Version
+  , kppToolVersion
+
+    -- * Settings
+  , parseSettings
+  , Settings(..)
+  , RunSettings(..)
+  , Action(..)
+  ) where
 
 import           Conduit
 import           Control.Applicative

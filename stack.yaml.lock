@@ -3,7 +3,14 @@
 # For more information, please see the documentation at:
 #   https://docs.haskellstack.org/en/stable/topics/lock_files
 
-packages: []
+packages:
+- completed:
+    hackage: mangrove-cli-0.4.0.0@sha256:42eea250c05cebfb41fcc8c272dd62d8d47942e0caca3802e2b7c7f6b50b474f,2661
+    pantry-tree:
+      sha256: 5c39a5c91fcb46d41dd3ad28c28def57ceafbbed24e532a9d6a28a5e6742c9ae
+      size: 1699
+  original:
+    hackage: mangrove-cli-0.4.0.0
 snapshots:
 - completed:
     sha256: 08bd13ce621b41a8f5e51456b38d5b46d7783ce114a50ab604d6bbab0d002146

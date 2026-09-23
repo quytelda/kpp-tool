@@ -66,6 +66,7 @@ import           Kpp.Common
 putNull :: Put
 putNull = putWord8 0
 
+-- | The content of a PNG chunk with type information.
 data PngChunk = PngChunk
   { chunkType :: !ByteString
   , chunkData :: !BL.ByteString
@@ -74,6 +75,11 @@ data PngChunk = PngChunk
 chunkCRC :: PngChunk -> Word32
 chunkCRC PngChunk{..} = crc32Update (crc32 chunkType) chunkData
 
+-- | Determine whether a chunk is relevant for KPP parsing.
+--
+-- There are two types of chunks we care about: one that contains KPP
+-- version info, and the other which contains the KPP settings
+-- document.
 isSpecialChunk :: PngChunk -> Bool
 isSpecialChunk PngChunk{..} = isTextual && hasSpecialKey
   where
@@ -101,6 +107,7 @@ getChunk = do
     then pure chunk
     else fail "checksum mismatch"
 
+-- | Serialize a 'PngChunk' to a binary PNG chunk.
 putChunk :: PngChunk -> Put
 putChunk chunk@PngChunk{..} = do
   putWord32be   chunkLength
@@ -202,12 +209,16 @@ parseChunk chunk@PngChunk{..} =
         "preset"  -> pure $ SettingChunk val
         _         -> empty
 
+-- | Render a version chunk from some 'ByteString' representing the
+-- version.
 renderVersionChunk :: ByteString -> PngChunk
 renderVersionChunk version = PngChunk
   { chunkType = "tEXt"
   , chunkData = runPut $ putTextChunk "version" $ BS.fromStrict version
   }
 
+-- | Render a settings chunk from an XML document, provided as a lazy
+-- 'BL.ByteString'.
 renderSettingChunk :: BL.ByteString -> PngChunk
 renderSettingChunk xml = PngChunk
   { chunkType = "zTXt"
@@ -234,7 +245,7 @@ wrapChunks = do
 
   C.map putChunk .| conduitPut
 
--- | Extract KPP settings data from a stream of 'ParsedChunks'.
+-- | Extract KPP settings data from a stream of 'ParsedChunk's.
 selectSettings
   :: Monad m
   => ConduitT ParsedChunk ByteString m ()
@@ -242,7 +253,7 @@ selectSettings = awaitForever $ \case
   SettingChunk bs -> sourceLazy bs
   _               -> pure ()
 
--- | Extract KPP version data from a stream of 'ParsedChunks'.
+-- | Extract KPP version data from a stream of 'ParsedChunk's.
 selectVersion
   :: Monad m
   => ConduitT ParsedChunk ByteString m ()

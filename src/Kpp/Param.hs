@@ -66,6 +66,8 @@ prettyParam key val = pretty key <> ":" <+> pretty val
 prettyParams :: Map T.Text ParamValue -> Doc ann
 prettyParams = concatWith (<\>) . Map.mapWithKey prettyParam
 
+-- | Parses a @<param>@ element into a key/value pair. The key is the
+-- parameter name.
 parseXml_param :: MonadThrow m => Element -> m (T.Text, ParamValue)
 parseXml_param = withElement "param" $ \e@Element{..} -> do
   paramName <- attributeText "name" e
@@ -79,6 +81,7 @@ parseXml_param = withElement "param" $ \e@Element{..} -> do
     Just paramType   -> throwM $ ParseException $ "unrecognized param type: " <> show paramType
   return (paramName, paramValue)
 
+-- | Render a @<param>@ element from a parameter name and value.
 renderXml_param :: T.Text -> ParamValue -> Element
 renderXml_param key val =
   let (paramType, paramData) = case val of
@@ -92,5 +95,7 @@ renderXml_param key val =
                           <> maybe empty (\t -> [("type", t)]) paramType
   in Element{..}
 
+-- | Render a list of @<param>@ elements from a map associating
+-- parameter names to values.
 renderXml_params :: Map T.Text ParamValue -> [Element]
 renderXml_params = Map.elems . Map.mapWithKey renderXml_param

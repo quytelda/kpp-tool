@@ -29,6 +29,7 @@ module Kpp.App
   , Settings(..)
   , RunSettings(..)
   , Action(..)
+  , ResourceSpec(..)
   ) where
 
 import           Conduit
@@ -328,6 +329,7 @@ runAction (SetIcon path) = do
   icon <- liftIO $ BL.readFile path
   get >>= setPresetIcon icon >>= put
 
+-- | Run the program with the provided runtime settings.
 run :: Settings -> IO ()
 run settings = do
   case settings of

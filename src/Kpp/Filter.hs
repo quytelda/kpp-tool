@@ -53,12 +53,14 @@ prettyFilter :: Maybe FilterConfig -> Doc ann
 prettyFilter Nothing             = "None"
 prettyFilter (Just filterConfig) = pretty filterConfig
 
+-- | Parse a @<filterconfig>@ element.
 parseXml_filterconfig :: MonadThrow m => Element -> m FilterConfig
 parseXml_filterconfig = withElement "filterconfig" $ \e -> do
   filterVersion <- attributeText "version" e
   filterParams  <- Map.fromList <$> traverse parseXml_param (childElements e)
   return FilterConfig{..}
 
+-- | Construct a @<filterconfig>@ element.
 renderXml_filterconfig :: FilterConfig -> Element
 renderXml_filterconfig FilterConfig{..} =
   let elementName       = "filterconfig"

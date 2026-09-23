@@ -68,9 +68,14 @@ data ParseException = ParseException String
 instance Exception ParseException where
   displayException (ParseException e) = e
 
+-- | Lift an @Either String@ into an instance of 'MonadThrow'.
 eitherThrow :: MonadThrow m => Either String a -> m a
 eitherThrow = either (throwM . ParseException) pure
 
+-- | Helper function for succinctly comparing record fields.
+--
+-- >>> (resourceName .== "name") (Resource "name" "file" "type" "data")
+-- True
 (.==) :: Eq a => (t -> a) -> a -> t -> Bool
 f .== x = \r -> f r == x
 
@@ -135,23 +140,28 @@ prettyByteData bytes
 --------------------------------------------------------------------------------
 -- XML
 
+-- | Create a 'Document' with the given 'Element' as its root.
 makeDocument :: Element -> Document
 makeDocument documentRoot =
   let documentPrologue = Prologue [] Nothing []
       documentEpilogue = []
   in Document{..}
 
+-- | Serialize an XML document given a root 'Element'.
 elementToLBS :: Element -> BL.ByteString
 elementToLBS = renderLBS renderSettings . makeDocument
   where
     renderSettings = def { rsUseCDATA = const True }
 
+-- | Parse the root 'Element' from an XML document.
 elementFromLBS :: MonadThrow m => BL.ByteString -> m Element
 elementFromLBS xml =
   case parseLBS def xml of
     Right doc -> pure $ documentRoot doc
     Left  err -> throwM err
 
+-- | Get the value of an 'Element' attribute or throw an error if it
+-- doesn't exist.
 attributeText :: MonadThrow m => Name -> Element -> m T.Text
 attributeText name Element{..} =
   case Map.lookup name elementAttributes of

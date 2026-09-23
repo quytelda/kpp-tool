@@ -87,6 +87,8 @@ saveResource mpath Resource{..} = do
   BS.writeFile path resourceData
   return path
 
+-- | Parse a @<resource>@ element and verify the attached MD5
+-- checksum.
 parseXml_resource :: MonadThrow m => Element -> m Resource
 parseXml_resource = withElement "resource" $ \e -> do
   resourceName <- attributeText "name"     e
@@ -101,6 +103,7 @@ parseXml_resource = withElement "resource" $ \e -> do
     else throwM $ ParseException $
          "checksum mismatch for resource: " <> show resourceName
 
+-- | Construct a @<resource>@ element.
 renderXml_resource :: Resource -> Element
 renderXml_resource Resource{..} =
   let resourceCsum      = md5sum resourceData
@@ -120,6 +123,8 @@ parseXml_resources = withElement "resources" $ \e -> do
   resources <- forM (childElements e) parseXml_resource
   return $ Map.fromList $ zip (resourceName <$> resources) resources
 
+-- | Render a @<resources>@ element from a map associating resource
+-- names to 'Resource' records.
 renderXml_resources :: Map T.Text Resource -> Element
 renderXml_resources rs =
   let elementName       = "resources"

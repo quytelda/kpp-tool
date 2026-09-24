@@ -201,6 +201,7 @@ parseAction = asum @[]
 -- | Settings for normal program operations.
 data RunSettings = RunSettings
   { rsQuiet     :: Bool
+  , rsOverwrite :: Bool
   , rsActions   :: [Action]
   , rsInputFile :: Maybe FilePath
   } deriving (Show)
@@ -208,12 +209,16 @@ data RunSettings = RunSettings
 parseRunSettings :: ParseTree UnixScheme RunSettings
 parseRunSettings = RunSettings
   <$> opt_quiet
+  <*> opt_overwrite
   <*> some parseAction
   <*> prm_presetFile
   where
     opt_quiet =
       switch ["--quiet", "-q"]
       "Supress unnecessary output"
+    opt_overwrite =
+      switch ["--overwrite", "-O"]
+      "Overwrite the input file after processing"
 
 parsePathLike :: TextParser (Maybe FilePath)
 parsePathLike = TextParser
@@ -339,7 +344,14 @@ run settings = do
       in runConduitRes $ src .| extractSettings .| dst
     RunMode rs@RunSettings{..} -> do
       let pipeline = mapM_ runAction rsActions
-      preset <- runConduitRes
-        $ maybe stdinC sourceFile rsInputFile
-        .| pngToPreset
-      void $ runActionM pipeline rs preset
+          src = maybe stdinC sourceFile rsInputFile
+          dst = maybe stdoutC sinkFileCautious rsInputFile
+      preset <- runConduitRes $ src .| pngToPreset
+      preset' <- runActionM pipeline rs preset
+
+      -- We wait until processing is complete before overwriting the
+      -- original file. Since reading the input and writing the output
+      -- are in separate ResourceT blocks, this should avoid
+      -- conflicts.
+      when rsOverwrite $
+        runConduitRes $ presetToPng preset' .| dst
